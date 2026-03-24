@@ -12,6 +12,7 @@ A mobile application designed to help parents and children manage household chor
 - Adam Jabbar
 - Cole Brooks
 - Samuel Angulo
+- Curtis Atanga
 
 **Course Staff:**
 - Professor: Diana Rabah
