@@ -5,6 +5,7 @@ export default function RootLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="parent-login" />
+      <Stack.Screen name="child-login" />
     </Stack>
   );
 }

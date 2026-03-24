@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Image,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 
 export default function ParentLoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -98,7 +100,7 @@ export default function ParentLoginScreen() {
       <Modal
         visible={modalVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setModalVisible(false)}>
         <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
           <View style={styles.modalOverlay}>
@@ -110,6 +112,7 @@ export default function ParentLoginScreen() {
                   <Text style={styles.closeText}>✕</Text>
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>Have a family code?{'\n'}Enter it here!</Text>
+                <Text style={styles.modalSubtitle}>Ask your parent for the family code to join.</Text>
                 <TextInput
                   style={styles.codeInput}
                   placeholder="Enter family code"
@@ -119,7 +122,7 @@ export default function ParentLoginScreen() {
                   autoCapitalize="characters"
                 />
                 <TouchableOpacity style={styles.joinBtn}>
-                  <Text style={styles.joinBtnText}>Join</Text>
+                  <Text style={styles.joinBtnText}>Join 🚀</Text>
                 </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
@@ -132,20 +135,19 @@ export default function ParentLoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFDF7' },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
   inner: { flex: 1 },
   content: {
     flex: 1,
     paddingHorizontal: 28,
-    paddingTop: 40,
+    paddingTop: 20,
     paddingBottom: 40,
-    justifyContent: 'flex-start',
-    gap: 20,
+    justifyContent: 'space-between',
   },
 
   // Logo
   logoContainer: { alignItems: 'center' },
-  logoImage: { width: 180, height: 180 },
+  logoImage: { width: 160, height: 160 },
 
   // Title
   title: { fontSize: 30, fontWeight: '800', color: '#2D2D2D', textAlign: 'center' },
@@ -160,7 +162,7 @@ const styles = StyleSheet.create({
     padding: 13,
     fontSize: 15,
     color: '#333',
-    backgroundColor: '#fff',
+    backgroundColor: '#F9F9F9',
     marginBottom: 16,
   },
   passwordContainer: {
@@ -168,7 +170,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#DDD',
     borderRadius: 10,
-    backgroundColor: '#fff',
+    backgroundColor: '#F9F9F9',
     alignItems: 'center',
   },
   passwordInput: { flex: 1, padding: 13, fontSize: 15, color: '#333' },
@@ -176,38 +178,33 @@ const styles = StyleSheet.create({
   eyeIcon: { fontSize: 18 },
 
   // Buttons
-  buttonsSection: {},
+  buttonsSection: { gap: 10 },
   loginBtn: {
-    backgroundColor: '#F4B942',
-    borderRadius: 10,
+    backgroundColor: '#4ECDC4',
+    borderRadius: 12,
     padding: 15,
     alignItems: 'center',
-    marginBottom: 10,
-    shadowColor: '#F4B942',
+    shadowColor: '#4ECDC4',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
   loginBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  forgotBtn: { alignItems: 'center', marginBottom: 20 },
+  forgotBtn: { alignItems: 'center' },
   forgotText: { color: '#E63946', fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
-  dividerContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  dividerContainer: { flexDirection: 'row', alignItems: 'center' },
   dividerLine: { flex: 1, height: 1, backgroundColor: '#DDD' },
   dividerText: { marginHorizontal: 10, color: '#999', fontSize: 13 },
   signUpBtn: {
-    backgroundColor: '#F4B942',
-    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
     padding: 15,
     alignItems: 'center',
-    marginBottom: 10,
-    shadowColor: '#F4B942',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
   },
-  signUpBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  signUpBtnText: { color: '#4ECDC4', fontSize: 17, fontWeight: '700' },
   childLink: {
     textAlign: 'center',
     color: '#E63946',
@@ -220,14 +217,20 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
   },
   modalContainer: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
     padding: 28,
-    paddingBottom: 40,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   closeBtn: { alignSelf: 'flex-end', marginBottom: 8 },
   closeText: { fontSize: 18, color: '#999' },
@@ -235,26 +238,28 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: '#2D2D2D',
-    marginBottom: 20,
+    marginBottom: 6,
     lineHeight: 30,
   },
+  modalSubtitle: { fontSize: 14, color: '#888', marginBottom: 20 },
   codeInput: {
     borderWidth: 1.5,
     borderColor: '#DDD',
     borderRadius: 10,
     padding: 14,
-    fontSize: 16,
+    fontSize: 18,
     color: '#333',
     backgroundColor: '#FAFAFA',
     marginBottom: 16,
-    letterSpacing: 2,
+    textAlign: 'center',
+    letterSpacing: 4,
   },
   joinBtn: {
-    backgroundColor: '#F4B942',
-    borderRadius: 10,
+    backgroundColor: '#4ECDC4',
+    borderRadius: 12,
     padding: 15,
     alignItems: 'center',
-    shadowColor: '#F4B942',
+    shadowColor: '#4ECDC4',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
