@@ -84,9 +84,9 @@ export default function ParentLoginScreen() {
                 <Text style={styles.dividerText}>Don't have an account?</Text>
                 <View style={styles.dividerLine} />
               </View>
-              <TouchableOpacity style={styles.signUpBtn}>
-                <Text style={styles.signUpBtnText}>Sign Up</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.signUpBtn} onPress={() => router.push('/sign-up')}>
+              <Text style={styles.signUpBtnText}>Sign Up</Text>
+               </TouchableOpacity>
               <TouchableOpacity onPress={() => setModalVisible(true)}>
                 <Text style={styles.childLink}>I'm a child!</Text>
               </TouchableOpacity>
@@ -142,7 +142,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingTop: 20,
     paddingBottom: 40,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 20,
   },
 
   // Logo
