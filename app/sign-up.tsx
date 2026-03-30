@@ -107,8 +107,7 @@ export default function SignUpScreen() {
 
             </View>
 
-            {/* Sign Up Button */}
-            <TouchableOpacity style={styles.signUpBtn}>
+            <TouchableOpacity style={styles.signUpBtn} onPress={() => router.replace('/parent-dashboard')}>
               <Text style={styles.signUpBtnText}>Create Account 🎉</Text>
             </TouchableOpacity>
 

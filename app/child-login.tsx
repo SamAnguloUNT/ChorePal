@@ -54,9 +54,17 @@ export default function ChildLoginScreen() {
                 letterSpacing={4}
               />
 
-              <TouchableOpacity style={styles.joinBtn}>
-                <Text style={styles.joinBtnText}>Join 🚀</Text>
-              </TouchableOpacity>
+              <TouchableOpacity 
+              style={styles.joinBtn}
+              onPress={() => {
+              if (familyCode.length < 4) {
+              alert('Please enter a valid family code!');
+               return;
+           }
+                router.replace('/child-dashboard');
+            }}>
+            <Text style={styles.joinBtnText}>Join 🚀</Text>
+            </TouchableOpacity>
             </View>
 
             {/* Spacing */}

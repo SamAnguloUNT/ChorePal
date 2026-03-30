@@ -73,7 +73,7 @@ export default function ParentLoginScreen() {
 
             {/* Buttons */}
             <View style={styles.buttonsSection}>
-              <TouchableOpacity style={styles.loginBtn}>
+              <TouchableOpacity style={styles.loginBtn} onPress={() => router.replace('/parent-dashboard')}>
                 <Text style={styles.loginBtnText}>Log In</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.forgotBtn}>
@@ -121,9 +121,18 @@ export default function ParentLoginScreen() {
                   onChangeText={setFamilyCode}
                   autoCapitalize="characters"
                 />
-                <TouchableOpacity style={styles.joinBtn}>
-                  <Text style={styles.joinBtnText}>Join 🚀</Text>
-                </TouchableOpacity>
+               <TouchableOpacity 
+              style={styles.joinBtn}
+              onPress={() => {
+             if (familyCode.length < 4) {
+              alert('Please enter a valid family code!');
+              return;
+              }
+               setModalVisible(false);
+               router.replace('/child-dashboard');
+           }}>
+             <Text style={styles.joinBtnText}>Join 🚀</Text>
+            </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
           </View>
