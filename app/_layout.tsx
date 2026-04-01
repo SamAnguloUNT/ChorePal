@@ -11,6 +11,7 @@ export default function RootLayout() {
       <Stack.Screen name="add-child" />
       <Stack.Screen name="family-code" />
       <Stack.Screen name="child-dashboard" />
+      <Stack.Screen name="create-chore" />
     </Stack>
   );
 }

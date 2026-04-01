@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    SafeAreaView, ScrollView,
-    StyleSheet,
-    Text, TouchableOpacity,
-    View
+  SafeAreaView, ScrollView,
+  StyleSheet,
+  Text, TouchableOpacity,
+  View
 } from 'react-native';
 
 const MOCK_CHILDREN = [
@@ -80,9 +80,11 @@ export default function ParentDashboard() {
         {/* Quick Actions */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionBtn}>
+          <TouchableOpacity 
+            style={styles.actionBtn}
+            onPress={() => router.push('/create-chore')}>
             <Text style={styles.actionEmoji}>📋</Text>
-            <Text style={styles.actionText}>Chores</Text>
+             <Text style={styles.actionText}>Chores</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn}>
             <Text style={styles.actionEmoji}>⭐</Text>
@@ -102,10 +104,10 @@ export default function ParentDashboard() {
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navEmoji}>📋</Text>
-          <Text style={styles.navText}>Chores</Text>
-        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/create-chore')}>
+         <Text style={styles.navEmoji}>📋</Text>
+         <Text style={styles.navText}>Chores</Text>
+       </TouchableOpacity>
         <TouchableOpacity style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Kids</Text>
