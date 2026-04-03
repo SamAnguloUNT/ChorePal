@@ -1,14 +1,14 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
-    Alert,
-    Image,
-    Modal,
-    SafeAreaView, ScrollView,
-    StyleSheet,
-    Text, TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Image,
+  Modal,
+  SafeAreaView, ScrollView,
+  StyleSheet,
+  Text, TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 
 const MOCK_CHORES = [
@@ -81,7 +81,7 @@ export default function ChildDashboard() {
         <View style={styles.header}>
           <View style={styles.profileSection}>
             <View style={styles.profileCircle}>
-              <Text style={styles.profileEmoji}>👧</Text>
+              <Text style={styles.profileEmoji}>🐶</Text>
             </View>
             <View>
               <Text style={styles.childName}>Sarah ⭐</Text>

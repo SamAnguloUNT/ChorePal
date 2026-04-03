@@ -8,8 +8,8 @@ import {
 } from 'react-native';
 
 const MOCK_CHILDREN = [
-  { id: '1', name: 'Sarah', age: 10, avatar: '👧', code: 'SARAH-4X9K' },
-  { id: '2', name: 'Jacob', age: 8, avatar: '🧒', code: 'JACOB-7M2P' },
+  { id: '1', name: 'Sarah', age: 10, avatar: '🐶', code: 'SARAH-4X9K' },
+  { id: '2', name: 'Jacob', age: 8, avatar: '🐱', code: 'JACOB-7M2P' },
 ];
 
 export default function ParentDashboard() {
@@ -90,10 +90,12 @@ export default function ParentDashboard() {
             <Text style={styles.actionEmoji}>⭐</Text>
             <Text style={styles.actionText}>Rewards</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn}>
-            <Text style={styles.actionEmoji}>✅</Text>
-            <Text style={styles.actionText}>Approvals</Text>
-          </TouchableOpacity>
+         <TouchableOpacity 
+           style={styles.actionBtn}
+           onPress={() => router.push('/approvals')}>
+           <Text style={styles.actionEmoji}>✅</Text>
+          <Text style={styles.actionText}>Approvals</Text>
+         </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn}>
             <Text style={styles.actionEmoji}>⚙️</Text>
             <Text style={styles.actionText}>Settings</Text>
