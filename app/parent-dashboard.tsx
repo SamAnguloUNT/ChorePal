@@ -86,10 +86,12 @@ export default function ParentDashboard() {
             <Text style={styles.actionEmoji}>📋</Text>
              <Text style={styles.actionText}>Chores</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn}>
-            <Text style={styles.actionEmoji}>⭐</Text>
-            <Text style={styles.actionText}>Rewards</Text>
-          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/create-reward')}>
+          <Text style={styles.actionEmoji}>⭐</Text>
+           <Text style={styles.actionText}>Rewards</Text>
+         </TouchableOpacity>
          <TouchableOpacity 
            style={styles.actionBtn}
            onPress={() => router.push('/approvals')}>
@@ -114,10 +116,10 @@ export default function ParentDashboard() {
           <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Kids</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+       <TouchableOpacity style={styles.navItem} onPress={() => router.push('/create-reward')}>
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={styles.navText}>Rewards</Text>
-        </TouchableOpacity>
+       </TouchableOpacity>
         <TouchableOpacity style={styles.navItem}>
           <Text style={styles.navEmoji}>⚙️</Text>
           <Text style={styles.navText}>Settings</Text>
