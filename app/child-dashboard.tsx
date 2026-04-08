@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -19,6 +20,7 @@ const MOCK_CHORES = [
 ];
 
 export default function ChildDashboard() {
+  const router = useRouter(); 
   const [chores, setChores] = useState(MOCK_CHORES);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedChore, setSelectedChore] = useState<any>(null);
@@ -168,10 +170,12 @@ export default function ChildDashboard() {
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Chores</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navEmoji}>⭐</Text>
-          <Text style={styles.navText}>Rewards</Text>
-        </TouchableOpacity>
+        <TouchableOpacity
+  style={styles.navItem}
+  onPress={() => router.replace('/child-rewards')}>
+  <Text style={styles.navEmoji}>⭐</Text>
+  <Text style={styles.navText}>Rewards</Text>
+</TouchableOpacity>
       </View>
 
       {/* Verification Modal */}
