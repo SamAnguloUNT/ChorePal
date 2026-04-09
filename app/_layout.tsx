@@ -16,6 +16,7 @@ export default function RootLayout() {
       <Stack.Screen name="approval-detail" />
       <Stack.Screen name="create-reward" />
       <Stack.Screen name="child-rewards" />
+      <Stack.Screen name="chore-list" />
     </Stack>
   );
 }

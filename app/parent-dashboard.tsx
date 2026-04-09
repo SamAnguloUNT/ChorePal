@@ -80,11 +80,11 @@ export default function ParentDashboard() {
         {/* Quick Actions */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsRow}>
-          <TouchableOpacity 
-            style={styles.actionBtn}
-            onPress={() => router.push('/create-chore')}>
-            <Text style={styles.actionEmoji}>📋</Text>
-             <Text style={styles.actionText}>Chores</Text>
+          <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => router.push('/chore-list')}>
+          <Text style={styles.actionEmoji}>📋</Text>
+          <Text style={styles.actionText}>Chores</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -108,10 +108,10 @@ export default function ParentDashboard() {
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/create-chore')}>
-         <Text style={styles.navEmoji}>📋</Text>
-         <Text style={styles.navText}>Chores</Text>
-       </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/chore-list')}>
+           <Text style={styles.navEmoji}>📋</Text>
+           <Text style={styles.navText}>Chores</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Kids</Text>

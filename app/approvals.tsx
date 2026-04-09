@@ -1,41 +1,41 @@
 import { useRouter } from 'expo-router';
 import {
-    Image,
-    SafeAreaView, ScrollView,
-    StyleSheet,
-    Text, TouchableOpacity,
-    View
+  Image,
+  SafeAreaView, ScrollView,
+  StyleSheet,
+  Text, TouchableOpacity,
+  View
 } from 'react-native';
 
 const MOCK_PENDING = [
   {
     id: '1',
     childName: 'Sarah',
-    childAvatar: '👧',
+    childAvatar: '🐶',
     choreTitle: 'Make your bed',
     choreCoins: 5,
     submittedAt: '2 mins ago',
-    photo: 'https://picsum.photos/400/300?random=1',
+    photo: require('../assets/images/One.jpg'),
     priority: 'medium',
   },
   {
     id: '2',
     childName: 'Jacob',
-    childAvatar: '🧒',
+    childAvatar: '🐱',
     choreTitle: 'Take out trash',
     choreCoins: 10,
     submittedAt: '15 mins ago',
-    photo: 'https://picsum.photos/400/300?random=2',
+    photo: require('../assets/images/2.jpg'),
     priority: 'high',
   },
   {
     id: '3',
     childName: 'Sarah',
-    childAvatar: '👧',
+    childAvatar: '🐶',
     choreTitle: 'Clean your room',
     choreCoins: 12,
     submittedAt: '1 hour ago',
-    photo: 'https://picsum.photos/400/300?random=3',
+    photo: require('../assets/images/3.jpg'),
     priority: 'low',
   },
 ];
@@ -82,7 +82,7 @@ export default function ApprovalsScreen() {
               })}>
 
               {/* Photo Thumbnail */}
-              <Image source={{ uri: item.photo }} style={styles.thumbnail} />
+             <Image source={typeof item.photo === 'string' ? { uri: item.photo } : item.photo} style={styles.thumbnail} />
 
               {/* Info */}
               <View style={styles.cardInfo}>

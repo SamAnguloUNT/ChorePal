@@ -1,23 +1,23 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    Alert,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text, TextInput, TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 
 const MOCK_CHILDREN = [
-  { id: '1', name: 'Sarah', avatar: '👧' },
-  { id: '2', name: 'Jacob', avatar: '🧒' },
+  { id: '1', name: 'Sarah', avatar: '🐶' },
+  { id: '2', name: 'Jacob', avatar: '🐱' },
 ];
 
 export default function CreateChoreScreen() {

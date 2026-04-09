@@ -1,17 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    Alert,
-    Image,
-    Keyboard,
-    KeyboardAvoidingView, Platform,
-    SafeAreaView, ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView, Platform,
+  SafeAreaView, ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 
 export default function ApprovalDetailScreen() {
@@ -113,10 +113,10 @@ export default function ApprovalDetailScreen() {
 
             {/* Photo */}
             <Text style={styles.sectionLabel}>Submitted Photo</Text>
-            <Image
-              source={{ uri: photo as string }}
-              style={styles.photo}
-              resizeMode="cover"
+           <Image
+            source={typeof photo === 'string' ? { uri: photo as string } : photo}
+            style={styles.photo}
+            resizeMode="cover"
             />
 
             {/* Comment */}

@@ -1,22 +1,22 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    Alert,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text, TextInput, TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 
 const MOCK_CHILDREN = [
-  { id: '1', name: 'Sarah', avatar: '👧' },
-  { id: '2', name: 'Jacob', avatar: '🧒' },
+  { id: '1', name: 'Sarah', avatar: '🐶' },
+  { id: '2', name: 'Jacob', avatar: '🐱' },
 ];
 
 const EMOJI_OPTIONS = [
