@@ -9,12 +9,12 @@ import {
 } from 'react-native';
 
 const MOCK_REWARDS = [
-  { id: '1', emoji: '📚', title: 'New Books', coinCost: 20 },
-  { id: '2', emoji: '🖥️', title: '1 Hour Screen Time', coinCost: 30 },
+  { id: '1', emoji: '🧸', title: 'New Toys', coinCost: 30 },
+  { id: '2', emoji: '💰', title: '5 Dollars', coinCost: 30 },
   { id: '3', emoji: '🍦', title: 'Ice Cream', coinCost: 50 },
   { id: '4', emoji: '🍫', title: 'Candy Store', coinCost: 40 },
   { id: '5', emoji: '🎬', title: 'Movie Theaters', coinCost: 60 },
-  { id: '6', emoji: '🎮', title: 'PLayStation 5', coinCost: 600 },
+  { id: '6', emoji: '🎮', title: 'PlayStation 5', coinCost: 600 },
 ];
 
 export default function ChildRewardsScreen() {

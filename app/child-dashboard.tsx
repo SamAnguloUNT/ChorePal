@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1.5,
   },
-  choreCompleted: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
+  choreCompleted: { backgroundColor: '#00020121', borderColor: '#cd4e4e00' },
   choreIncomplete: { backgroundColor: '#FFF5F5', borderColor: '#FFB3B3' },
   choreLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   choreStatusIcon: {
