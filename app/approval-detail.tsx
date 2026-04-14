@@ -14,6 +14,9 @@ import {
   View
 } from 'react-native';
 
+const DETAIL_PHOTO = require('../assets/images/bed.jpg');
+
+
 export default function ApprovalDetailScreen() {
   const router = useRouter();
   const { childName, childAvatar, choreTitle, choreCoins, submittedAt, photo, priority } = useLocalSearchParams();
@@ -114,10 +117,10 @@ export default function ApprovalDetailScreen() {
             {/* Photo */}
             <Text style={styles.sectionLabel}>Submitted Photo</Text>
            <Image
-            source={typeof photo === 'string' ? { uri: photo as string } : photo}
-            style={styles.photo}
-            resizeMode="cover"
-            />
+             source={DETAIL_PHOTO}
+             style={styles.photo}
+              resizeMode="cover"
+              />
 
             {/* Comment */}
             <Text style={styles.sectionLabel}>Leave a Comment (optional)</Text>
