@@ -1,5 +1,6 @@
-# ChorePal <img width="200" height="180" alt="ChorePal Logo" src="https://github.com/user-attachments/assets/bce6438a-56f6-4085-84d5-e99952ef1d73" />
+# ChorePal 
 
+<img width="200" height="180" alt="ChorePal Logo" src="https://github.com/user-attachments/assets/bce6438a-56f6-4085-84d5-e99952ef1d73" />
 
 A mobile application designed to help parents and children manage household chores together.
 
