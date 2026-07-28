@@ -1,16 +1,20 @@
 import { useRouter } from 'expo-router';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-    Image,
-    Keyboard,
-    KeyboardAvoidingView, Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text, TextInput, TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView, Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
+import { auth, db } from '../config/firebase';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -20,6 +24,44 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSignUp = async () => {
+    if (!name || !email || !password || !confirmPassword) {
+      Alert.alert('Missing!', 'Please fill in all fields!');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Error!', 'Passwords do not match!');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Error!', 'Password must be at least 6 characters!');
+      return;
+    }
+    try {
+      setLoading(true);
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Save parent profile to Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        name,
+        email,
+        role: 'parent',
+        createdAt: new Date(),
+      });
+
+      Alert.alert('Account Created! 🎉', 'Welcome to ChorePal!', [
+        { text: 'OK', onPress: () => router.replace('/parent-dashboard') }
+      ]);
+    } catch (error: any) {
+      Alert.alert('Sign Up Failed!', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -107,8 +149,14 @@ export default function SignUpScreen() {
 
             </View>
 
-            <TouchableOpacity style={styles.signUpBtn} onPress={() => router.replace('/parent-dashboard')}>
-              <Text style={styles.signUpBtnText}>Create Account 🎉</Text>
+            {/* Sign Up Button */}
+            <TouchableOpacity
+              style={[styles.signUpBtn, loading && styles.signUpBtnDisabled]}
+              onPress={handleSignUp}
+              disabled={loading}>
+              <Text style={styles.signUpBtnText}>
+                {loading ? 'Creating Account...' : 'Create Account 🎉'}
+              </Text>
             </TouchableOpacity>
 
             {/* Already have account */}
@@ -186,6 +234,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  signUpBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
   signUpBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 
   // Login link

@@ -16,7 +16,6 @@ import {
 
 const DETAIL_PHOTO = require('../assets/images/bed.jpg');
 
-
 export default function ApprovalDetailScreen() {
   const router = useRouter();
   const { childName, childAvatar, choreTitle, choreCoins, submittedAt, photo, priority } = useLocalSearchParams();

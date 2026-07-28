@@ -43,6 +43,19 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d9a5e69b-ac88-4dd6-9eb1-b52cbf5f5da0"
+      }
+    },
+    "owner": "samunt",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d9a5e69b-ac88-4dd6-9eb1-b52cbf5f5da0"
     }
   }
 }
