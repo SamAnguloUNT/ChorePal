@@ -1,15 +1,18 @@
 import { useRouter } from 'expo-router';
+import { addDoc, collection } from 'firebase/firestore';
 import { useState } from 'react';
 import {
-    Keyboard,
-    KeyboardAvoidingView, Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text, TextInput, TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView, Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
+import { auth, db } from '../config/firebase';
 
 const AVATARS = ['👧', '🧒', '👦', '😊', '😎', '🤩', '🦸', '🐶', '🐱', '🦊', '🐻', '🐼'];
 
@@ -19,6 +22,7 @@ export default function AddChildScreen() {
   const [age, setAge] = useState('');
   const [pin, setPin] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👧');
+  const [loading, setLoading] = useState(false);
 
   const generateCode = (childName: string) => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -29,20 +33,48 @@ export default function AddChildScreen() {
     return `${childName.toUpperCase()}-${code}`;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name || !age || !pin) {
-      alert('Please fill in all fields!');
+      Alert.alert('Missing!', 'Please fill in all fields!');
       return;
     }
     if (pin.length !== 4) {
-      alert('PIN must be 4 digits!');
+      Alert.alert('Invalid PIN!', 'PIN must be 4 digits!');
       return;
     }
-    const code = generateCode(name);
-    router.push({
-      pathname: '/family-code',
-      params: { name, age, avatar: selectedAvatar, code }
-    });
+    try {
+      setLoading(true);
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error!', 'You must be logged in!');
+        return;
+      }
+
+      const code = generateCode(name);
+
+      // Save child to Firestore
+      await addDoc(collection(db, 'children'), {
+        name,
+        age: parseInt(age),
+        pin,
+        avatar: selectedAvatar,
+        code,
+        parentId: user.uid,
+        coinBalance: 0,
+        createdAt: new Date(),
+      });
+
+      // Navigate to family code screen
+      router.push({
+        pathname: '/family-code',
+        params: { name, age, avatar: selectedAvatar, code }
+      });
+
+    } catch (error: any) {
+      Alert.alert('Error!', error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -111,8 +143,13 @@ export default function AddChildScreen() {
             />
 
             {/* Create Button */}
-            <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
-              <Text style={styles.createBtnText}>Create Profile & Generate Code 🎉</Text>
+            <TouchableOpacity
+              style={[styles.createBtn, loading && styles.createBtnDisabled]}
+              onPress={handleCreate}
+              disabled={loading}>
+              <Text style={styles.createBtnText}>
+                {loading ? 'Creating...' : 'Create Profile & Generate Code 🎉'}
+              </Text>
             </TouchableOpacity>
 
           </ScrollView>
@@ -175,5 +212,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  createBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
   createBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

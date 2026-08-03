@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useState } from 'react';
 import {
+  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -12,6 +14,7 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
+import { auth } from '../config/firebase';
 
 export default function ParentLoginScreen() {
   const router = useRouter();
@@ -20,6 +23,23 @@ export default function ParentLoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [familyCode, setFamilyCode] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Missing!', 'Please enter your email and password!');
+      return;
+    }
+    try {
+      setLoading(true);
+      await signInWithEmailAndPassword(auth, email, password);
+      router.replace('/parent-dashboard');
+    } catch (error: any) {
+      Alert.alert('Login Failed!', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -73,8 +93,13 @@ export default function ParentLoginScreen() {
 
             {/* Buttons */}
             <View style={styles.buttonsSection}>
-              <TouchableOpacity style={styles.loginBtn} onPress={() => router.replace('/parent-dashboard')}>
-                <Text style={styles.loginBtnText}>Log In</Text>
+              <TouchableOpacity
+                style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
+                onPress={handleLogin}
+                disabled={loading}>
+                <Text style={styles.loginBtnText}>
+                  {loading ? 'Logging in...' : 'Log In'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.forgotBtn}>
                 <Text style={styles.forgotText}>Forgot Password?</Text>
@@ -85,8 +110,8 @@ export default function ParentLoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
               <TouchableOpacity style={styles.signUpBtn} onPress={() => router.push('/sign-up')}>
-              <Text style={styles.signUpBtnText}>Sign Up</Text>
-               </TouchableOpacity>
+                <Text style={styles.signUpBtnText}>Sign Up</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => setModalVisible(true)}>
                 <Text style={styles.childLink}>I'm a child!</Text>
               </TouchableOpacity>
@@ -121,18 +146,18 @@ export default function ParentLoginScreen() {
                   onChangeText={setFamilyCode}
                   autoCapitalize="characters"
                 />
-               <TouchableOpacity 
-              style={styles.joinBtn}
-              onPress={() => {
-             if (familyCode.length < 4) {
-              alert('Please enter a valid family code!');
-              return;
-              }
-               setModalVisible(false);
-               router.replace('/child-dashboard');
-           }}>
-             <Text style={styles.joinBtnText}>Join 🚀</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.joinBtn}
+                  onPress={() => {
+                    if (familyCode.length < 4) {
+                      alert('Please enter a valid family code!');
+                      return;
+                    }
+                    setModalVisible(false);
+                    router.replace('/child-dashboard');
+                  }}>
+                  <Text style={styles.joinBtnText}>Join 🚀</Text>
+                </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -200,6 +225,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  loginBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
   loginBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
   forgotBtn: { alignItems: 'center' },
   forgotText: { color: '#E63946', fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },

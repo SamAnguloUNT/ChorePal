@@ -1,20 +1,60 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { signOut } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
+  Alert,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
   View
 } from 'react-native';
-
-const MOCK_CHILDREN = [
-  { id: '1', name: 'Sarah', age: 10, avatar: '🐶', code: 'SARAH-4X9K' },
-  { id: '2', name: 'Jacob', age: 8, avatar: '🐱', code: 'JACOB-7M2P' },
-];
+import { auth, db } from '../config/firebase';
 
 export default function ParentDashboard() {
   const router = useRouter();
-  const [children, setChildren] = useState(MOCK_CHILDREN);
+  const [parentName, setParentName] = useState('');
+  const [children, setChildren] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        // Load parent name
+        const docSnap = await getDoc(doc(db, 'users', user.uid));
+        if (docSnap.exists()) {
+          setParentName(docSnap.data().name);
+        }
+
+        // Load children
+        const childrenQuery = query(
+          collection(db, 'children'),
+          where('parentId', '==', user.uid)
+        );
+        const childrenSnap = await getDocs(childrenQuery);
+        const childrenData = childrenSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setChildren(childrenData);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleLogout = async () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut(auth);
+          router.replace('/');
+        }
+      }
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,11 +64,13 @@ export default function ParentDashboard() {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Welcome back! 👋</Text>
-            <Text style={styles.name}>Jane Doe</Text>
+            <Text style={styles.name}>{parentName || 'Loading...'}</Text>
           </View>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>J</Text>
-          </View>
+          <TouchableOpacity style={styles.avatarCircle} onPress={handleLogout}>
+            <Text style={styles.avatarText}>
+              {parentName ? parentName.charAt(0).toUpperCase() : '?'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Kids Section */}
@@ -38,18 +80,22 @@ export default function ParentDashboard() {
           showsHorizontalScrollIndicator={false}
           style={styles.kidsRow}
           contentContainerStyle={styles.kidsRowContent}>
-          {children.map((child) => (
-            <TouchableOpacity key={child.id} style={styles.kidCard}>
-              <View style={styles.kidAvatar}>
-                <Text style={styles.kidAvatarEmoji}>{child.avatar}</Text>
-              </View>
-              <Text style={styles.kidName}>{child.name}</Text>
-              <View style={styles.childBadge}>
-                <Text style={styles.childBadgeText}>CHILD</Text>
-              </View>
-              <Text style={styles.kidCode}>{child.code}</Text>
-            </TouchableOpacity>
-          ))}
+          {children.length === 0 ? (
+            <Text style={styles.noKidsText}>No kids added yet!</Text>
+          ) : (
+            children.map((child) => (
+              <TouchableOpacity key={child.id} style={styles.kidCard}>
+                <View style={styles.kidAvatar}>
+                  <Text style={styles.kidAvatarEmoji}>{child.avatar}</Text>
+                </View>
+                <Text style={styles.kidName}>{child.name}</Text>
+                <View style={styles.childBadge}>
+                  <Text style={styles.childBadgeText}>CHILD</Text>
+                </View>
+                <Text style={styles.kidCode}>{child.code}</Text>
+              </TouchableOpacity>
+            ))
+          )}
 
           {/* Add New Kid */}
           <TouchableOpacity
@@ -67,11 +113,13 @@ export default function ParentDashboard() {
         <View style={styles.parentCard}>
           <View style={styles.parentInfo}>
             <View style={styles.parentInitial}>
-              <Text style={styles.parentInitialText}>J</Text>
+              <Text style={styles.parentInitialText}>
+                {parentName ? parentName.charAt(0).toUpperCase() : '?'}
+              </Text>
             </View>
             <View>
-              <Text style={styles.parentName}>Jane Doe</Text>
-              <Text style={styles.parentRole}>MOM</Text>
+              <Text style={styles.parentName}>{parentName || 'Loading...'}</Text>
+              <Text style={styles.parentRole}>PARENT</Text>
             </View>
           </View>
           <Text style={styles.parentArrow}>›</Text>
@@ -81,23 +129,23 @@ export default function ParentDashboard() {
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsRow}>
           <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => router.push('/chore-list')}>
-          <Text style={styles.actionEmoji}>📋</Text>
-          <Text style={styles.actionText}>Chores</Text>
+            style={styles.actionBtn}
+            onPress={() => router.push('/chore-list')}>
+            <Text style={styles.actionEmoji}>📋</Text>
+            <Text style={styles.actionText}>Chores</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => router.push('/rewards-list')}>
-          <Text style={styles.actionEmoji}>⭐</Text>
-         <Text style={styles.actionText}>Rewards</Text>
-         </TouchableOpacity>
-         <TouchableOpacity 
-           style={styles.actionBtn}
-           onPress={() => router.push('/approvals')}>
-           <Text style={styles.actionEmoji}>✅</Text>
-          <Text style={styles.actionText}>Approvals</Text>
-         </TouchableOpacity>
+            <Text style={styles.actionEmoji}>⭐</Text>
+            <Text style={styles.actionText}>Rewards</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/approvals')}>
+            <Text style={styles.actionEmoji}>✅</Text>
+            <Text style={styles.actionText}>Approvals</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn}>
             <Text style={styles.actionEmoji}>⚙️</Text>
             <Text style={styles.actionText}>Settings</Text>
@@ -109,17 +157,17 @@ export default function ParentDashboard() {
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
         <TouchableOpacity style={styles.navItem} onPress={() => router.push('/chore-list')}>
-           <Text style={styles.navEmoji}>📋</Text>
-           <Text style={styles.navText}>Chores</Text>
+          <Text style={styles.navEmoji}>📋</Text>
+          <Text style={styles.navText}>Chores</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Kids</Text>
         </TouchableOpacity>
-       <TouchableOpacity style={styles.navItem} onPress={() => router.push('/rewards-list')}>
-             <Text style={styles.navEmoji}>⭐</Text>
-             <Text style={styles.navText}>Rewards</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/rewards-list')}>
+          <Text style={styles.navEmoji}>⭐</Text>
+          <Text style={styles.navText}>Rewards</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.navItem}>
           <Text style={styles.navEmoji}>⚙️</Text>
           <Text style={styles.navText}>Settings</Text>
@@ -165,6 +213,7 @@ const styles = StyleSheet.create({
   // Kids Row
   kidsRow: { marginBottom: 28 },
   kidsRowContent: { gap: 12, paddingRight: 24 },
+  noKidsText: { fontSize: 14, color: '#888', alignSelf: 'center', marginRight: 12 },
   kidCard: {
     backgroundColor: '#F0FFFE',
     borderRadius: 16,
