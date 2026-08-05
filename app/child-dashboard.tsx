@@ -1,6 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -11,24 +13,57 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-
-const MOCK_CHORES = [
-  { id: '1', title: 'Make your bed', coins: 5, completed: false, verified: false },
-  { id: '2', title: 'Wash the dishes', coins: 8, completed: true, verified: true },
-  { id: '3', title: 'Take out trash', coins: 10, completed: false, verified: false },
-  { id: '4', title: 'Clean your room', coins: 12, completed: false, verified: false },
-];
+import { db } from '../config/firebase';
 
 export default function ChildDashboard() {
-  const router = useRouter(); 
-  const [chores, setChores] = useState(MOCK_CHORES);
+  const router = useRouter();
+  const [childData, setChildData] = useState<any>(null);
+  const [chores, setChores] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedChore, setSelectedChore] = useState<any>(null);
   const [photo, setPhoto] = useState<string | null>(null);
 
+  useEffect(() => {
+    const loadData = async () => {
+      const session = await AsyncStorage.getItem('childSession');
+      if (session) {
+        const child = JSON.parse(session);
+        setChildData(child);
+
+        const choresQuery = query(
+          collection(db, 'chores'),
+          where('assignedTo', 'in', ['all', child.id])
+        );
+        const choresSnap = await getDocs(choresQuery);
+        const choresData = choresSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          completed: false,
+          verified: false,
+        }));
+        setChores(choresData);
+      }
+    };
+    loadData();
+  }, []);
+
   const completedCount = chores.filter(c => c.completed).length;
-  const progress = completedCount / chores.length;
+  const progress = chores.length > 0 ? completedCount / chores.length : 0;
   const totalCoins = chores.filter(c => c.completed).reduce((sum, c) => sum + c.coins, 0);
+
+  const handleLogout = async () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.removeItem('childSession');
+          router.replace('/');
+        }
+      }
+    ]);
+  };
 
   const openVerification = (chore: any) => {
     setSelectedChore(chore);
@@ -82,18 +117,18 @@ export default function ChildDashboard() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.profileSection}>
-            <View style={styles.profileCircle}>
-              <Text style={styles.profileEmoji}>🐶</Text>
-            </View>
+            <TouchableOpacity style={styles.profileCircle} onPress={handleLogout}>
+              <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
+            </TouchableOpacity>
             <View>
-              <Text style={styles.childName}>Sarah ⭐</Text>
+              <Text style={styles.childName}>{childData?.name || 'Loading...'} ⭐</Text>
               <Text style={styles.childLabel}>CHILD'S LOGIN</Text>
             </View>
           </View>
           <View style={styles.coinsBadge}>
             <Text style={styles.coinsEmoji}>🪙</Text>
             <View>
-              <Text style={styles.coinsAmount}>${totalCoins}</Text>
+              <Text style={styles.coinsAmount}>{childData?.coinBalance || 0}</Text>
               <Text style={styles.coinsLabel}>TOTAL COINS</Text>
             </View>
           </View>
@@ -107,7 +142,7 @@ export default function ChildDashboard() {
           <Text style={styles.progressLabel}>DAILY PROGRESS</Text>
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
-            <View style={[styles.progressThumb, { left: `${progress * 100 - 3}%` }]} />
+            <View style={[styles.progressThumb, { left: `${Math.max(0, progress * 100 - 3)}%` }]} />
           </View>
           <Text style={styles.progressText}>
             {Math.round(progress * 100)}% Complete! {progress === 1 ? '🎉' : '💪'}
@@ -117,49 +152,56 @@ export default function ChildDashboard() {
         {/* To Do */}
         <Text style={styles.toDoTitle}>TO DO:</Text>
         <View style={styles.choresList}>
-          {chores.map((chore) => (
-            <View
-              key={chore.id}
-              style={[
-                styles.choreCard,
-                chore.completed ? styles.choreCompleted : styles.choreIncomplete
-              ]}>
-              <View style={styles.choreLeft}>
-                <View style={[
-                  styles.choreStatusIcon,
-                  chore.completed ? styles.statusComplete : styles.statusIncomplete
-                ]}>
-                  <Text style={styles.statusEmoji}>{chore.completed ? '✅' : '❌'}</Text>
-                </View>
-                <View>
-                  <Text style={[
-                    styles.choreTitle,
-                    chore.completed && styles.choreTitleDone
-                  ]}>{chore.title}</Text>
-                  <Text style={styles.choreCoins}>
-                    Due today | {chore.coins} 🪙
-                  </Text>
-                </View>
-              </View>
-              {!chore.completed && (
-                <TouchableOpacity
-                  style={styles.uploadBtn}
-                  onPress={() => openVerification(chore)}>
-                  <Text style={styles.uploadBtnText}>📸</Text>
-                </TouchableOpacity>
-              )}
-              {chore.completed && !chore.verified && (
-                <View style={styles.pendingBadge}>
-                  <Text style={styles.pendingText}>⏳</Text>
-                </View>
-              )}
-              {chore.completed && chore.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedText}>✓</Text>
-                </View>
-              )}
+          {chores.length === 0 ? (
+            <View style={styles.noChores}>
+              <Text style={styles.noChoresEmoji}>🎉</Text>
+              <Text style={styles.noChoresText}>No chores assigned yet!</Text>
             </View>
-          ))}
+          ) : (
+            chores.map((chore) => (
+              <View
+                key={chore.id}
+                style={[
+                  styles.choreCard,
+                  chore.completed ? styles.choreCompleted : styles.choreIncomplete
+                ]}>
+                <View style={styles.choreLeft}>
+                  <View style={[
+                    styles.choreStatusIcon,
+                    chore.completed ? styles.statusComplete : styles.statusIncomplete
+                  ]}>
+                    <Text style={styles.statusEmoji}>{chore.completed ? '✅' : '❌'}</Text>
+                  </View>
+                  <View>
+                    <Text style={[
+                      styles.choreTitle,
+                      chore.completed && styles.choreTitleDone
+                    ]}>{chore.title}</Text>
+                    <Text style={styles.choreCoins}>
+                      Due today | {chore.coins} 🪙
+                    </Text>
+                  </View>
+                </View>
+                {!chore.completed && (
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={() => openVerification(chore)}>
+                    <Text style={styles.uploadBtnText}>📸</Text>
+                  </TouchableOpacity>
+                )}
+                {chore.completed && !chore.verified && (
+                  <View style={styles.pendingBadge}>
+                    <Text style={styles.pendingText}>⏳</Text>
+                  </View>
+                )}
+                {chore.completed && chore.verified && (
+                  <View style={styles.verifiedBadge}>
+                    <Text style={styles.verifiedText}>✓</Text>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
         </View>
 
       </ScrollView>
@@ -171,11 +213,11 @@ export default function ChildDashboard() {
           <Text style={[styles.navText, styles.navTextActive]}>Chores</Text>
         </TouchableOpacity>
         <TouchableOpacity
-  style={styles.navItem}
-  onPress={() => router.replace('/child-rewards')}>
-  <Text style={styles.navEmoji}>⭐</Text>
-  <Text style={styles.navText}>Rewards</Text>
-</TouchableOpacity>
+          style={styles.navItem}
+          onPress={() => router.replace('/child-rewards')}>
+          <Text style={styles.navEmoji}>⭐</Text>
+          <Text style={styles.navText}>Rewards</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Verification Modal */}
@@ -188,25 +230,18 @@ export default function ChildDashboard() {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
               <View style={styles.modalCard}>
-
-                {/* Close */}
                 <TouchableOpacity
                   style={styles.closeBtn}
                   onPress={() => setModalVisible(false)}>
                   <Text style={styles.closeText}>✕</Text>
                 </TouchableOpacity>
-
                 <Text style={styles.modalTitle}>Good Job! 🎉</Text>
                 <Text style={styles.modalSubtitle}>
                   Upload a photo of "{selectedChore?.title}" to verify!
                 </Text>
-
-                {/* Photo Preview */}
                 {photo && (
                   <Image source={{ uri: photo }} style={styles.photoPreview} />
                 )}
-
-                {/* Camera & Upload Buttons */}
                 <View style={styles.photoButtons}>
                   <TouchableOpacity style={styles.photoBtn} onPress={takePhoto}>
                     <Text style={styles.photoBtnEmoji}>📷</Text>
@@ -217,14 +252,11 @@ export default function ChildDashboard() {
                     <Text style={styles.photoBtnText}>Upload</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Submit */}
                 <TouchableOpacity
                   style={[styles.submitBtn, !photo && styles.submitBtnDisabled]}
                   onPress={submitVerification}>
                   <Text style={styles.submitBtnText}>Submit for Approval ✅</Text>
                 </TouchableOpacity>
-
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -238,8 +270,6 @@ export default function ChildDashboard() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
-
-  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -277,8 +307,6 @@ const styles = StyleSheet.create({
   coinsEmoji: { fontSize: 20 },
   coinsAmount: { fontSize: 18, fontWeight: '800', color: '#fff' },
   coinsLabel: { fontSize: 9, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-
-  // Activities Title
   activitiesTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -287,8 +315,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     letterSpacing: 1,
   },
-
-  // Progress
   progressCard: {
     backgroundColor: '#F0FFFE',
     borderRadius: 16,
@@ -323,10 +349,11 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   progressText: { fontSize: 14, fontWeight: '700', color: '#4ECDC4', textAlign: 'center' },
-
-  // To Do
   toDoTitle: { fontSize: 16, fontWeight: '800', color: '#2D2D2D', marginBottom: 12, letterSpacing: 1 },
   choresList: { gap: 12 },
+  noChores: { alignItems: 'center', paddingVertical: 40, gap: 8 },
+  noChoresEmoji: { fontSize: 48 },
+  noChoresText: { fontSize: 16, color: '#888', fontWeight: '600' },
   choreCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -335,7 +362,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1.5,
   },
-  choreCompleted: { backgroundColor: '#00020121', borderColor: '#cd4e4e00' },
+  choreCompleted: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
   choreIncomplete: { backgroundColor: '#FFF5F5', borderColor: '#FFB3B3' },
   choreLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   choreStatusIcon: {
@@ -378,8 +405,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   verifiedText: { fontSize: 16, color: '#4ECDC4', fontWeight: '700' },
-
-  // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',
@@ -397,8 +422,6 @@ const styles = StyleSheet.create({
   navEmoji: { fontSize: 22 },
   navText: { fontSize: 11, color: '#888', fontWeight: '600' },
   navTextActive: { color: '#4ECDC4' },
-
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

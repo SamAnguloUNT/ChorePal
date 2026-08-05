@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -13,11 +14,7 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-
-const MOCK_CHILDREN = [
-  { id: '1', name: 'Sarah', avatar: '🐶' },
-  { id: '2', name: 'Jacob', avatar: '🐱' },
-];
+import { auth, db } from '../config/firebase';
 
 const EMOJI_OPTIONS = [
   '🎮', '📱', '🍦', '🍕', '🎬', '📚', '🎨', '🧸',
@@ -35,6 +32,28 @@ export default function CreateRewardScreen() {
   const [assignTo, setAssignTo] = useState<'all' | 'specific'>('all');
   const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
   const [emojiModalVisible, setEmojiModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [children, setChildren] = useState<any[]>([]);
+
+  // Load real children from Firestore
+  useEffect(() => {
+    const loadChildren = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const childrenQuery = query(
+          collection(db, 'children'),
+          where('parentId', '==', user.uid)
+        );
+        const childrenSnap = await getDocs(childrenQuery);
+        const childrenData = childrenSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setChildren(childrenData);
+      }
+    };
+    loadChildren();
+  }, []);
 
   const toggleChild = (id: string) => {
     setSelectedChildren(prev =>
@@ -42,15 +61,57 @@ export default function CreateRewardScreen() {
     );
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!title) { Alert.alert('Missing!', 'Please enter a reward title!'); return; }
     if (!coins) { Alert.alert('Missing!', 'Please enter coin cost!'); return; }
     if (assignTo === 'specific' && selectedChildren.length === 0) {
       Alert.alert('Missing!', 'Please select at least one child!'); return;
     }
-    Alert.alert('Reward Created! 🎉', `"${title}" has been added to the rewards catalog!`, [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+
+    try {
+      setLoading(true);
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error!', 'You must be logged in!');
+        return;
+      }
+
+      if (assignTo === 'specific') {
+        // Create a reward for each selected child
+        for (const childId of selectedChildren) {
+          await addDoc(collection(db, 'rewards'), {
+            title,
+            emoji: selectedEmoji,
+            coinCost: parseInt(coins),
+            description,
+            availableTo: childId,
+            redeemed: false,
+            parentId: user.uid,
+            createdAt: new Date(),
+          });
+        }
+      } else {
+        // Create one reward available to all children
+        await addDoc(collection(db, 'rewards'), {
+          title,
+          emoji: selectedEmoji,
+          coinCost: parseInt(coins),
+          description,
+          availableTo: 'all',
+          redeemed: false,
+          parentId: user.uid,
+          createdAt: new Date(),
+        });
+      }
+
+      Alert.alert('Reward Created! 🎉', `"${title}" has been added to the rewards catalog!`, [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error: any) {
+      Alert.alert('Error!', error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -146,20 +207,24 @@ export default function CreateRewardScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Child Selector */}
+            {/* Child Selector — real children */}
             {assignTo === 'specific' && (
               <View style={styles.childSelector}>
-                {MOCK_CHILDREN.map(child => (
-                  <TouchableOpacity
-                    key={child.id}
-                    style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
-                    onPress={() => toggleChild(child.id)}>
-                    <Text style={styles.childChipEmoji}>{child.avatar}</Text>
-                    <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
-                      {child.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {children.length === 0 ? (
+                  <Text style={styles.noChildrenText}>No children added yet!</Text>
+                ) : (
+                  children.map(child => (
+                    <TouchableOpacity
+                      key={child.id}
+                      style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
+                      onPress={() => toggleChild(child.id)}>
+                      <Text style={styles.childChipEmoji}>{child.avatar}</Text>
+                      <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
+                        {child.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             )}
 
@@ -183,8 +248,13 @@ export default function CreateRewardScreen() {
             </View>
 
             {/* Create Button */}
-            <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
-              <Text style={styles.createBtnText}>Create Reward 🎉</Text>
+            <TouchableOpacity
+              style={[styles.createBtn, loading && styles.createBtnDisabled]}
+              onPress={handleCreate}
+              disabled={loading}>
+              <Text style={styles.createBtnText}>
+                {loading ? 'Creating...' : 'Create Reward 🎉'}
+              </Text>
             </TouchableOpacity>
 
             {/* Delete Button */}
@@ -239,18 +309,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   inner: { flex: 1 },
   content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
-
-  // Back
   back: { marginBottom: 16 },
   backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
-
-  // Page Title
   pageTitle: { fontSize: 28, fontWeight: '800', color: '#2D2D2D', marginBottom: 24 },
-
-  // Label
   label: { fontSize: 14, fontWeight: '700', color: '#444', marginBottom: 8 },
-
-  // Emoji Picker Button
   emojiPickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -265,8 +327,6 @@ const styles = StyleSheet.create({
   selectedEmoji: { fontSize: 32 },
   emojiPickerText: { flex: 1, fontSize: 15, color: '#888', fontWeight: '600' },
   emojiArrow: { fontSize: 22, color: '#CCC' },
-
-  // Input
   input: {
     borderWidth: 1.5,
     borderColor: '#DDD',
@@ -288,8 +348,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     minHeight: 90,
   },
-
-  // Coins
   coinsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -316,8 +374,6 @@ const styles = StyleSheet.create({
     color: '#2D2D2D',
     backgroundColor: '#F9F9F9',
   },
-
-  // Toggle
   toggleRow: {
     flexDirection: 'row',
     backgroundColor: '#F0F0F0',
@@ -330,9 +386,14 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: '#4ECDC4' },
   toggleText: { fontSize: 14, fontWeight: '600', color: '#888' },
   toggleTextActive: { color: '#fff' },
-
-  // Child Selector
-  childSelector: { flexDirection: 'row', gap: 10, marginBottom: 16, marginTop: -8 },
+  childSelector: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+    marginTop: -8,
+    flexWrap: 'wrap',
+  },
+  noChildrenText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
   childChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -348,8 +409,6 @@ const styles = StyleSheet.create({
   childChipEmoji: { fontSize: 18 },
   childChipText: { fontSize: 14, fontWeight: '600', color: '#888' },
   childChipTextSelected: { color: '#4ECDC4' },
-
-  // Preview Card
   previewCard: {
     backgroundColor: '#F9F9F9',
     borderRadius: 16,
@@ -387,8 +446,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   previewBtnText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-
-  // Create Button
   createBtn: {
     backgroundColor: '#4ECDC4',
     borderRadius: 12,
@@ -401,9 +458,8 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  createBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
   createBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-
-  // Delete Button
   deleteBtn: {
     borderWidth: 1.5,
     borderColor: '#E63946',
@@ -412,8 +468,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteBtnText: { color: '#E63946', fontSize: 17, fontWeight: '700' },
-
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

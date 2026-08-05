@@ -1,5 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useState } from 'react';
 import {
   Alert,
@@ -14,7 +16,7 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 
 export default function ParentLoginScreen() {
   const router = useRouter();
@@ -22,8 +24,10 @@ export default function ParentLoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [familyCode, setFamilyCode] = useState('');
+  const [pin, setPin] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [joinLoading, setJoinLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -38,6 +42,54 @@ export default function ParentLoginScreen() {
       Alert.alert('Login Failed!', error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleJoin = async () => {
+    if (familyCode.length < 4) {
+      Alert.alert('Invalid Code!', 'Please enter a valid family code!');
+      return;
+    }
+    if (pin.length !== 4) {
+      Alert.alert('Invalid PIN!', 'Please enter your 4 digit PIN!');
+      return;
+    }
+    try {
+      setJoinLoading(true);
+      const childQuery = query(
+        collection(db, 'children'),
+        where('code', '==', familyCode.toUpperCase())
+      );
+      const childSnap = await getDocs(childQuery);
+
+      if (childSnap.empty) {
+        Alert.alert('Invalid Code!', 'No family found with that code. Please check and try again!');
+        return;
+      }
+
+      const childDoc = childSnap.docs[0];
+      const childData = childDoc.data();
+
+      if (childData.pin !== pin) {
+        Alert.alert('Wrong PIN!', 'That PIN is incorrect. Please try again!');
+        return;
+      }
+
+      await AsyncStorage.setItem('childSession', JSON.stringify({
+        id: childDoc.id,
+        name: childData.name,
+        avatar: childData.avatar,
+        coinBalance: childData.coinBalance,
+        parentId: childData.parentId,
+        code: childData.code,
+      }));
+
+      setModalVisible(false);
+      router.replace('/child-dashboard');
+    } catch (error: any) {
+      Alert.alert('Error!', error.message);
+    } finally {
+      setJoinLoading(false);
     }
   };
 
@@ -146,17 +198,23 @@ export default function ParentLoginScreen() {
                   onChangeText={setFamilyCode}
                   autoCapitalize="characters"
                 />
+                <TextInput
+                  style={styles.codeInput}
+                  placeholder="Enter your 4-digit PIN"
+                  placeholderTextColor="#aaa"
+                  value={pin}
+                  onChangeText={setPin}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  secureTextEntry
+                />
                 <TouchableOpacity
-                  style={styles.joinBtn}
-                  onPress={() => {
-                    if (familyCode.length < 4) {
-                      alert('Please enter a valid family code!');
-                      return;
-                    }
-                    setModalVisible(false);
-                    router.replace('/child-dashboard');
-                  }}>
-                  <Text style={styles.joinBtnText}>Join 🚀</Text>
+                  style={[styles.joinBtn, joinLoading && styles.joinBtnDisabled]}
+                  onPress={handleJoin}
+                  disabled={joinLoading}>
+                  <Text style={styles.joinBtnText}>
+                    {joinLoading ? 'Joining...' : 'Join 🚀'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </TouchableWithoutFeedback>
@@ -179,15 +237,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: 20,
   },
-
-  // Logo
   logoContainer: { alignItems: 'center' },
   logoImage: { width: 160, height: 160 },
-
-  // Title
   title: { fontSize: 30, fontWeight: '800', color: '#2D2D2D', textAlign: 'center' },
-
-  // Form
   formSection: {},
   label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 6 },
   input: {
@@ -211,8 +263,6 @@ const styles = StyleSheet.create({
   passwordInput: { flex: 1, padding: 13, fontSize: 15, color: '#333' },
   eyeBtn: { paddingHorizontal: 12 },
   eyeIcon: { fontSize: 18 },
-
-  // Buttons
   buttonsSection: { gap: 10 },
   loginBtn: {
     backgroundColor: '#4ECDC4',
@@ -248,8 +298,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
-
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -301,5 +349,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  joinBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
   joinBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

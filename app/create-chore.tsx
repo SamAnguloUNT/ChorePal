@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -14,11 +15,7 @@ import {
   View
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-
-const MOCK_CHILDREN = [
-  { id: '1', name: 'Sarah', avatar: '🐶' },
-  { id: '2', name: 'Jacob', avatar: '🐱' },
-];
+import { auth, db } from '../config/firebase';
 
 export default function CreateChoreScreen() {
   const router = useRouter();
@@ -34,6 +31,28 @@ export default function CreateChoreScreen() {
   const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [children, setChildren] = useState<any[]>([]);
+
+  // Load real children from Firestore
+  useEffect(() => {
+    const loadChildren = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const childrenQuery = query(
+          collection(db, 'children'),
+          where('parentId', '==', user.uid)
+        );
+        const childrenSnap = await getDocs(childrenQuery);
+        const childrenData = childrenSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setChildren(childrenData);
+      }
+    };
+    loadChildren();
+  }, []);
 
   const toggleChild = (id: string) => {
     setSelectedChildren(prev =>
@@ -41,16 +60,64 @@ export default function CreateChoreScreen() {
     );
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!title) { Alert.alert('Missing!', 'Please enter a chore title!'); return; }
     if (!coins) { Alert.alert('Missing!', 'Please enter coin amount!'); return; }
     if (!selectedDate) { Alert.alert('Missing!', 'Please set a deadline!'); return; }
     if (assignTo === 'specific' && selectedChildren.length === 0) {
       Alert.alert('Missing!', 'Please select at least one child!'); return;
     }
-    Alert.alert('Chore Created! 🎉', `"${title}" has been assigned successfully!`, [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+
+    try {
+      setLoading(true);
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Error!', 'You must be logged in!');
+        return;
+      }
+
+      // If assigning to specific children create a chore for each
+      if (assignTo === 'specific') {
+        for (const childId of selectedChildren) {
+          await addDoc(collection(db, 'chores'), {
+            title,
+            coins: parseInt(coins),
+            description,
+            choreType,
+            repeatable,
+            priority,
+            assignedTo: childId,
+            deadline: selectedDate,
+            status: 'pending',
+            parentId: user.uid,
+            createdAt: new Date(),
+          });
+        }
+      } else {
+        // Assign to all children
+        await addDoc(collection(db, 'chores'), {
+          title,
+          coins: parseInt(coins),
+          description,
+          choreType,
+          repeatable,
+          priority,
+          assignedTo: 'all',
+          deadline: selectedDate,
+          status: 'pending',
+          parentId: user.uid,
+          createdAt: new Date(),
+        });
+      }
+
+      Alert.alert('Chore Created! 🎉', `"${title}" has been assigned successfully!`, [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (error: any) {
+      Alert.alert('Error!', error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -144,20 +211,24 @@ export default function CreateChoreScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Child Selector */}
+            {/* Child Selector — now loads real children */}
             {assignTo === 'specific' && (
               <View style={styles.childSelector}>
-                {MOCK_CHILDREN.map(child => (
-                  <TouchableOpacity
-                    key={child.id}
-                    style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
-                    onPress={() => toggleChild(child.id)}>
-                    <Text style={styles.childChipEmoji}>{child.avatar}</Text>
-                    <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
-                      {child.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {children.length === 0 ? (
+                  <Text style={styles.noChildrenText}>No children added yet!</Text>
+                ) : (
+                  children.map(child => (
+                    <TouchableOpacity
+                      key={child.id}
+                      style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
+                      onPress={() => toggleChild(child.id)}>
+                      <Text style={styles.childChipEmoji}>{child.avatar}</Text>
+                      <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
+                        {child.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             )}
 
@@ -223,8 +294,13 @@ export default function CreateChoreScreen() {
             </View>
 
             {/* Create Button */}
-            <TouchableOpacity style={styles.createBtn} onPress={handleCreate}>
-              <Text style={styles.createBtnText}>Create Chore 🎉</Text>
+            <TouchableOpacity
+              style={[styles.createBtn, loading && styles.createBtnDisabled]}
+              onPress={handleCreate}
+              disabled={loading}>
+              <Text style={styles.createBtnText}>
+                {loading ? 'Creating...' : 'Create Chore 🎉'}
+              </Text>
             </TouchableOpacity>
 
             {/* Delete Button */}
@@ -290,19 +366,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   inner: { flex: 1 },
   content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
-
-  // Back
   back: { marginBottom: 16 },
   backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
-
-  // Page Title
   pageTitle: { fontSize: 28, fontWeight: '800', color: '#2D2D2D', marginBottom: 24 },
-
-  // Labels
   label: { fontSize: 14, fontWeight: '700', color: '#444', marginBottom: 8 },
   hintText: { fontSize: 12, color: '#aaa', marginTop: -4, marginBottom: 12, fontStyle: 'italic' },
-
-  // Input
   input: {
     borderWidth: 1.5,
     borderColor: '#DDD',
@@ -324,8 +392,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     minHeight: 90,
   },
-
-  // Coins
   coinsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,8 +418,6 @@ const styles = StyleSheet.create({
     color: '#2D2D2D',
     backgroundColor: '#F9F9F9',
   },
-
-  // Toggle
   toggleRow: {
     flexDirection: 'row',
     backgroundColor: '#F0F0F0',
@@ -362,23 +426,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 4,
   },
-  toggleBtn: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
+  toggleBtn: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
   toggleActive: { backgroundColor: '#4ECDC4' },
   toggleText: { fontSize: 14, fontWeight: '600', color: '#888' },
   toggleTextActive: { color: '#fff' },
-
-  // Child Selector
   childSelector: {
     flexDirection: 'row',
     gap: 10,
     marginBottom: 16,
     marginTop: -8,
+    flexWrap: 'wrap',
   },
+  noChildrenText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
   childChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -394,8 +453,6 @@ const styles = StyleSheet.create({
   childChipEmoji: { fontSize: 18 },
   childChipText: { fontSize: 14, fontWeight: '600', color: '#888' },
   childChipTextSelected: { color: '#4ECDC4' },
-
-  // Deadline
   deadlineBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -409,13 +466,7 @@ const styles = StyleSheet.create({
   },
   deadlineBtnText: { fontSize: 15, color: '#333', fontWeight: '600' },
   deadlineArrow: { fontSize: 22, color: '#CCC' },
-
-  // Priority
-  priorityRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
-  },
+  priorityRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   priorityBtn: {
     flex: 1,
     padding: 12,
@@ -430,8 +481,6 @@ const styles = StyleSheet.create({
   priorityHighActive: { backgroundColor: '#FFEBEE', borderColor: '#E63946' },
   priorityText: { fontSize: 14, fontWeight: '600', color: '#888' },
   priorityTextActive: { color: '#2D2D2D', fontWeight: '700' },
-
-  // Create Button
   createBtn: {
     backgroundColor: '#4ECDC4',
     borderRadius: 12,
@@ -444,9 +493,8 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  createBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
   createBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-
-  // Delete Button
   deleteBtn: {
     borderWidth: 1.5,
     borderColor: '#E63946',
@@ -455,8 +503,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteBtnText: { color: '#E63946', fontSize: 17, fontWeight: '700' },
-
-  // Calendar Modal
   calendarOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
