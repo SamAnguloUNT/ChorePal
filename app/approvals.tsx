@@ -1,44 +1,15 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
   View
 } from 'react-native';
-
-const MOCK_PENDING = [
-  {
-    id: '1',
-    childName: 'Sarah',
-    childAvatar: '🐶',
-    choreTitle: 'Make your bed',
-    choreCoins: 5,
-    submittedAt: '2 mins ago',
-    photo: require('../assets/images/One.jpg'),
-    priority: 'medium',
-  },
-  {
-    id: '2',
-    childName: 'Jacob',
-    childAvatar: '🐱',
-    choreTitle: 'Take out trash',
-    choreCoins: 10,
-    submittedAt: '15 mins ago',
-    photo: require('../assets/images/2.jpg'),
-    priority: 'high',
-  },
-  {
-    id: '3',
-    childName: 'Sarah',
-    childAvatar: '🐶',
-    choreTitle: 'Clean your room',
-    choreCoins: 12,
-    submittedAt: '1 hour ago',
-    photo: require('../assets/images/3.jpg'),
-    priority: 'low',
-  },
-];
+import { auth, db } from '../config/firebase';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: '#66BB6A',
@@ -48,6 +19,50 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 export default function ApprovalsScreen() {
   const router = useRouter();
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const formatTimeAgo = (date: Date) => {
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)} mins ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    return `${Math.floor(diff / 86400)} days ago`;
+  };
+
+  // useFocusEffect reloads every time screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadSubmissions = async () => {
+        try {
+          setLoading(true);
+          const user = auth.currentUser;
+          if (user) {
+            const submissionsQuery = query(
+              collection(db, 'submissions'),
+              where('parentId', '==', user.uid),
+              where('status', '==', 'pending')
+            );
+            const submissionsSnap = await getDocs(submissionsQuery);
+            const submissionsData = submissionsSnap.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              submittedAt: doc.data().submittedAt?.toDate
+                ? formatTimeAgo(doc.data().submittedAt.toDate())
+                : 'Just now',
+            }));
+            setSubmissions(submissionsData);
+          }
+        } catch (error) {
+          console.error('Error loading submissions:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadSubmissions();
+    }, [])
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -57,66 +72,87 @@ export default function ApprovalsScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Pending Approvals</Text>
+        <Text style={styles.headerTitle}>         Pending Approvals</Text>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{MOCK_PENDING.length}</Text>
+          <Text style={styles.badgeText}>{submissions.length}</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+          <Text style={styles.loadingText}>Loading submissions...</Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {submissions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>🎉</Text>
+              <Text style={styles.emptyTitle}>All caught up!</Text>
+              <Text style={styles.emptySubtitle}>No pending approvals right now.</Text>
+            </View>
+          ) : (
+            submissions.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.card}
+                onPress={() => router.push({
+                  pathname: '/approval-detail',
+                  params: {
+                    id: item.id,
+                    childName: item.childName,
+                    childAvatar: item.childAvatar,
+                    choreTitle: item.choreTitle,
+                    choreCoins: item.choreCoins,
+                    submittedAt: item.submittedAt,
+                    photoURL: item.photoURL,
+                    priority: item.priority || 'medium',
+                    aiApproved: item.aiApproved ? 'true' : 'false',
+                    aiConfidence: item.aiConfidence?.toString() || '0',
+                    aiDescription: item.aiDescription || '',
+                  }
+                })}>
 
-        {MOCK_PENDING.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🎉</Text>
-            <Text style={styles.emptyTitle}>All caught up!</Text>
-            <Text style={styles.emptySubtitle}>No pending approvals right now.</Text>
-          </View>
-        ) : (
-          MOCK_PENDING.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.card}
-              onPress={() => router.push({
-                pathname: '/approval-detail',
-                params: { ...item }
-              })}>
+                {/* Photo Thumbnail */}
+                <Image
+                  source={{ uri: item.photoURL }}
+                  style={styles.thumbnail}
+                />
 
-              {/* Photo Thumbnail */}
-             <Image source={typeof item.photo === 'string' ? { uri: item.photo } : item.photo} style={styles.thumbnail} />
-
-              {/* Info */}
-              <View style={styles.cardInfo}>
-                <View style={styles.cardTop}>
-                  <View style={styles.childInfo}>
-                    <Text style={styles.childAvatar}>{item.childAvatar}</Text>
-                    <Text style={styles.childName}>{item.childName}</Text>
+                {/* Info */}
+                <View style={styles.cardInfo}>
+                  <View style={styles.cardTop}>
+                    <View style={styles.childInfo}>
+                      <Text style={styles.childAvatar}>{item.childAvatar}</Text>
+                      <Text style={styles.childName}>{item.childName}</Text>
+                    </View>
+                    <View style={[
+                      styles.aiBadge,
+                      item.aiApproved ? styles.aiBadgeApproved : styles.aiBadgePending
+                    ]}>
+                      <Text style={styles.aiBadgeText}>
+                        {item.aiApproved ? '🤖✅' : '🤖⚠️'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_COLORS[item.priority] + '20', borderColor: PRIORITY_COLORS[item.priority] }]}>
-                    <Text style={[styles.priorityText, { color: PRIORITY_COLORS[item.priority] }]}>
-                      {item.priority.toUpperCase()}
-                    </Text>
+                  <Text style={styles.choreTitle}>{item.choreTitle}</Text>
+                  <View style={styles.cardBottom}>
+                    <Text style={styles.coinsText}>🪙 {item.choreCoins} coins</Text>
+                    <Text style={styles.timeText}>⏰ {item.submittedAt}</Text>
                   </View>
                 </View>
-                <Text style={styles.choreTitle}>{item.choreTitle}</Text>
-                <View style={styles.cardBottom}>
-                  <Text style={styles.coinsText}>🪙 {item.choreCoins} coins</Text>
-                  <Text style={styles.timeText}>⏰ {item.submittedAt}</Text>
-                </View>
-              </View>
 
-            </TouchableOpacity>
-          ))
-        )}
-
-      </ScrollView>
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -136,11 +172,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   badgeText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
-  // Scroll
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 14, color: '#888', fontWeight: '600' },
   scroll: { padding: 24, gap: 16 },
-
-  // Card
   card: {
     flexDirection: 'row',
     backgroundColor: '#F9F9F9',
@@ -154,25 +188,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  thumbnail: { width: 100, height: 110 },
+  thumbnail: { width: 100, height: 110, backgroundColor: '#EEE' },
   cardInfo: { flex: 1, padding: 12, justifyContent: 'space-between' },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   childInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   childAvatar: { fontSize: 18 },
   childName: { fontSize: 14, fontWeight: '700', color: '#2D2D2D' },
-  priorityBadge: {
-    borderRadius: 6,
+  aiBadge: {
+    borderRadius: 8,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderWidth: 1,
   },
-  priorityText: { fontSize: 10, fontWeight: '700' },
+  aiBadgeApproved: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
+  aiBadgePending: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
+  aiBadgeText: { fontSize: 12 },
   choreTitle: { fontSize: 15, fontWeight: '700', color: '#2D2D2D', marginVertical: 4 },
   cardBottom: { flexDirection: 'row', gap: 12 },
   coinsText: { fontSize: 12, color: '#888', fontWeight: '600' },
   timeText: { fontSize: 12, color: '#888', fontWeight: '600' },
-
-  // Empty State
   emptyState: { alignItems: 'center', paddingTop: 80, gap: 12 },
   emptyEmoji: { fontSize: 64 },
   emptyTitle: { fontSize: 22, fontWeight: '800', color: '#2D2D2D' },

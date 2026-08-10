@@ -1,27 +1,84 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { collection, deleteDoc, doc, getDocs, query, where } from 'firebase/firestore';
+import { useCallback, useState } from 'react';
 import {
-    Alert,
-    SafeAreaView, ScrollView,
-    StyleSheet,
-    Text, TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  SafeAreaView, ScrollView,
+  StyleSheet,
+  Text, TouchableOpacity,
+  View
 } from 'react-native';
-
-const MOCK_REWARDS = [
-  { id: '1', emoji: '📚', title: 'New Books', coinCost: 20, availableTo: 'All Children', redeemed: false },
-  { id: '2', emoji: '🖥️', title: '1 Hour Screen Time', coinCost: 30, availableTo: 'All Children', redeemed: true },
-  { id: '3', emoji: '🍦', title: 'Ice Cream', coinCost: 50, availableTo: 'Sarah', redeemed: false },
-  { id: '4', emoji: '🍫', title: 'Candy Store', coinCost: 40, availableTo: 'Sarah', redeemed: false },
-  { id: '5', emoji: '🎮', title: 'Extra Game Time', coinCost: 40, availableTo: 'Jacob', redeemed: false },
-  { id: '6', emoji: '🎬', title: 'Movie Theaters', coinCost: 60, availableTo: 'All Children', redeemed: true },
-  { id: '7', emoji: '🎮', title: 'PlayStation 5', coinCost: 600, availableTo: 'All Children', redeemed: false },
-];
+import { auth, db } from '../config/firebase';
 
 export default function RewardsListScreen() {
   const router = useRouter();
-  const [rewards, setRewards] = useState(MOCK_REWARDS);
+  const [rewards, setRewards] = useState<any[]>([]);
   const [filter, setFilter] = useState<'all' | 'available' | 'redeemed'>('all');
+  const [loading, setLoading] = useState(true);
+  const [children, setChildren] = useState<any[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        try {
+          setLoading(true);
+          const user = auth.currentUser;
+          if (!user) return;
+
+          // Load children to map IDs to names
+          const childrenQuery = query(
+            collection(db, 'children'),
+            where('parentId', '==', user.uid)
+          );
+          const childrenSnap = await getDocs(childrenQuery);
+          const childrenData = childrenSnap.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setChildren(childrenData);
+
+          // Load rewards
+          const rewardsQuery = query(
+            collection(db, 'rewards'),
+            where('parentId', '==', user.uid)
+          );
+          const rewardsSnap = await getDocs(rewardsQuery);
+
+          // Load purchases to check redeemed status
+          const purchasesQuery = query(
+            collection(db, 'purchases'),
+            where('parentId', '==', user.uid)
+          );
+          const purchasesSnap = await getDocs(purchasesQuery);
+          const purchasedRewardIds = purchasesSnap.docs.map(d => d.data().rewardId);
+
+          const rewardsData = rewardsSnap.docs.map(doc => {
+            const data = doc.data();
+            // Resolve availableTo name
+            let availableToLabel = 'All Children';
+            if (data.availableTo !== 'all') {
+              const child = childrenData.find(c => c.id === data.availableTo);
+              availableToLabel = child ? child.name : 'Specific Child';
+            }
+            return {
+              id: doc.id,
+              ...data,
+              redeemed: purchasedRewardIds.includes(doc.id),
+              availableToLabel,
+            };
+          });
+
+          setRewards(rewardsData);
+        } catch (error) {
+          console.error('Error loading rewards:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadData();
+    }, [])
+  );
 
   const filteredRewards = rewards.filter(r => {
     if (filter === 'available') return !r.redeemed;
@@ -32,6 +89,16 @@ export default function RewardsListScreen() {
   const totalRewards = rewards.length;
   const availableRewards = rewards.filter(r => !r.redeemed).length;
   const redeemedRewards = rewards.filter(r => r.redeemed).length;
+
+  const handleDeleteReward = async (rewardId: string, rewardTitle: string) => {
+    try {
+      await deleteDoc(doc(db, 'rewards', rewardId));
+      setRewards(prev => prev.filter(r => r.id !== rewardId));
+      Alert.alert('Deleted!', `"${rewardTitle}" has been deleted.`);
+    } catch (error: any) {
+      Alert.alert('Error!', error.message);
+    }
+  };
 
   const handleEditReward = (reward: any) => {
     Alert.alert(
@@ -55,10 +122,7 @@ export default function RewardsListScreen() {
                 {
                   text: 'Delete',
                   style: 'destructive',
-                  onPress: () => {
-                    setRewards(prev => prev.filter(r => r.id !== reward.id));
-                    Alert.alert('Deleted!', `"${reward.title}" has been deleted.`);
-                  }
+                  onPress: () => handleDeleteReward(reward.id, reward.title)
                 }
               ]
             );
@@ -84,90 +148,97 @@ export default function RewardsListScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{totalRewards}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
-          <View style={[styles.statCard, styles.statCardTeal]}>
-            <Text style={[styles.statNumber, { color: '#4ECDC4' }]}>{availableRewards}</Text>
-            <Text style={styles.statLabel}>Available</Text>
-          </View>
-          <View style={[styles.statCard, styles.statCardGold]}>
-            <Text style={[styles.statNumber, { color: '#F4B942' }]}>{redeemedRewards}</Text>
-            <Text style={styles.statLabel}>Redeemed</Text>
-          </View>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+          <Text style={styles.loadingText}>Loading rewards...</Text>
         </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Filter Tabs */}
-        <View style={styles.filterRow}>
-          {(['all', 'available', 'redeemed'] as const).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterBtn, filter === f && styles.filterBtnActive]}
-              onPress={() => setFilter(f)}>
-              <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Rewards List */}
-        {filteredRewards.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>⭐</Text>
-            <Text style={styles.emptyTitle}>No rewards found!</Text>
-            <Text style={styles.emptySubtitle}>Tap "+ Add" to create a new reward.</Text>
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statNumber}>{totalRewards}</Text>
+              <Text style={styles.statLabel}>Total</Text>
+            </View>
+            <View style={[styles.statCard, styles.statCardTeal]}>
+              <Text style={[styles.statNumber, { color: '#4ECDC4' }]}>{availableRewards}</Text>
+              <Text style={styles.statLabel}>Available</Text>
+            </View>
+            <View style={[styles.statCard, styles.statCardGold]}>
+              <Text style={[styles.statNumber, { color: '#F4B942' }]}>{redeemedRewards}</Text>
+              <Text style={styles.statLabel}>Redeemed</Text>
+            </View>
           </View>
-        ) : (
-          <View style={styles.rewardsList}>
-            {filteredRewards.map((reward) => (
+
+          {/* Filter Tabs */}
+          <View style={styles.filterRow}>
+            {(['all', 'available', 'redeemed'] as const).map((f) => (
               <TouchableOpacity
-                key={reward.id}
-                style={[styles.rewardCard, reward.redeemed && styles.rewardCardRedeemed]}
-                onPress={() => handleEditReward(reward)}>
-
-                {/* Emoji */}
-                <View style={[styles.rewardEmojiBox, reward.redeemed && styles.rewardEmojiBoxRedeemed]}>
-                  <Text style={styles.rewardEmoji}>{reward.emoji}</Text>
-                </View>
-
-                {/* Info */}
-                <View style={styles.rewardInfo}>
-                  <View style={styles.rewardTop}>
-                    <Text style={styles.rewardTitle}>{reward.title}</Text>
-                    <View style={[
-                      styles.statusBadge,
-                      reward.redeemed ? styles.statusBadgeRedeemed : styles.statusBadgeAvailable
-                    ]}>
-                      <Text style={[
-                        styles.statusText,
-                        reward.redeemed ? styles.statusTextRedeemed : styles.statusTextAvailable
-                      ]}>
-                        {reward.redeemed ? 'Redeemed' : 'Available'}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.rewardBottom}>
-                    <View style={styles.coinsBadge}>
-                      <Text style={styles.coinsText}>🪙 {reward.coinCost} coins</Text>
-                    </View>
-                    <Text style={styles.availableTo}>👥 {reward.availableTo}</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.editArrow}>›</Text>
-
+                key={f}
+                style={[styles.filterBtn, filter === f && styles.filterBtnActive]}
+                onPress={() => setFilter(f)}>
+                <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
-        )}
 
-      </ScrollView>
+          {/* Rewards List */}
+          {filteredRewards.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>⭐</Text>
+              <Text style={styles.emptyTitle}>No rewards found!</Text>
+              <Text style={styles.emptySubtitle}>Tap "+ Add" to create a new reward.</Text>
+            </View>
+          ) : (
+            <View style={styles.rewardsList}>
+              {filteredRewards.map((reward) => (
+                <TouchableOpacity
+                  key={reward.id}
+                  style={[styles.rewardCard, reward.redeemed && styles.rewardCardRedeemed]}
+                  onPress={() => handleEditReward(reward)}>
+
+                  {/* Emoji */}
+                  <View style={[styles.rewardEmojiBox, reward.redeemed && styles.rewardEmojiBoxRedeemed]}>
+                    <Text style={styles.rewardEmoji}>{reward.emoji}</Text>
+                  </View>
+
+                  {/* Info */}
+                  <View style={styles.rewardInfo}>
+                    <View style={styles.rewardTop}>
+                      <Text style={styles.rewardTitle}>{reward.title}</Text>
+                      <View style={[
+                        styles.statusBadge,
+                        reward.redeemed ? styles.statusBadgeRedeemed : styles.statusBadgeAvailable
+                      ]}>
+                        <Text style={[
+                          styles.statusText,
+                          reward.redeemed ? styles.statusTextRedeemed : styles.statusTextAvailable
+                        ]}>
+                          {reward.redeemed ? 'Redeemed' : 'Available'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.rewardBottom}>
+                      <View style={styles.coinsBadge}>
+                        <Text style={styles.coinsText}>🪙 {reward.coinCost} coins</Text>
+                      </View>
+                      <Text style={styles.availableTo}>👥 {reward.availableToLabel}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.editArrow}>›</Text>
+
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+        </ScrollView>
+      )}
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
@@ -201,8 +272,6 @@ export default function RewardsListScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -222,11 +291,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
-  // Scroll
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 14, color: '#888', fontWeight: '600' },
   scroll: { padding: 24, paddingBottom: 100 },
-
-  // Stats
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   statCard: {
     flex: 1,
@@ -241,8 +308,6 @@ const styles = StyleSheet.create({
   statCardGold: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
   statNumber: { fontSize: 24, fontWeight: '800', color: '#2D2D2D' },
   statLabel: { fontSize: 11, color: '#888', fontWeight: '600', textAlign: 'center', marginTop: 2 },
-
-  // Filter
   filterRow: {
     flexDirection: 'row',
     backgroundColor: '#F0F0F0',
@@ -255,8 +320,6 @@ const styles = StyleSheet.create({
   filterBtnActive: { backgroundColor: '#4ECDC4' },
   filterText: { fontSize: 13, fontWeight: '600', color: '#888' },
   filterTextActive: { color: '#fff' },
-
-  // Rewards List
   rewardsList: { gap: 12 },
   rewardCard: {
     flexDirection: 'row',
@@ -269,8 +332,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rewardCardRedeemed: { backgroundColor: '#FFFDF7', borderColor: '#F4B942' },
-
-  // Emoji Box
   rewardEmojiBox: {
     width: 52,
     height: 52,
@@ -283,8 +344,6 @@ const styles = StyleSheet.create({
   },
   rewardEmojiBoxRedeemed: { backgroundColor: '#F0FFFE', borderColor: '#4ECDC4' },
   rewardEmoji: { fontSize: 28 },
-
-  // Info
   rewardInfo: { flex: 1 },
   rewardTop: {
     flexDirection: 'row',
@@ -314,14 +373,10 @@ const styles = StyleSheet.create({
   coinsText: { fontSize: 12, fontWeight: '700', color: '#F4B942' },
   availableTo: { fontSize: 12, color: '#888', fontWeight: '600' },
   editArrow: { fontSize: 20, color: '#CCC' },
-
-  // Empty State
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyEmoji: { fontSize: 64 },
   emptyTitle: { fontSize: 22, fontWeight: '800', color: '#2D2D2D' },
   emptySubtitle: { fontSize: 15, color: '#888' },
-
-  // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',

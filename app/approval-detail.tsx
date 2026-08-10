@@ -1,6 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Keyboard,
@@ -13,13 +15,47 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-
-const DETAIL_PHOTO = require('../assets/images/bed.jpg');
+import { db } from '../config/firebase';
 
 export default function ApprovalDetailScreen() {
   const router = useRouter();
-  const { childName, childAvatar, choreTitle, choreCoins, submittedAt, photo, priority } = useLocalSearchParams();
+  const {
+    id,
+    childName,
+    childAvatar,
+    choreTitle,
+    choreCoins,
+    submittedAt,
+    priority,
+    aiApproved,
+    aiConfidence,
+    aiDescription,
+  } = useLocalSearchParams();
+
   const [comment, setComment] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [photoURL, setPhotoURL] = useState<string | null>(null);
+  const [loadingPhoto, setLoadingPhoto] = useState(true);
+
+  // Load submission directly from Firestore to get real photoURL
+  useEffect(() => {
+    const loadSubmission = async () => {
+      try {
+        const submissionDoc = await getDoc(doc(db, 'submissions', id as string));
+        if (submissionDoc.exists()) {
+          const data = submissionDoc.data();
+          console.log('Submission data:', data);
+          console.log('Photo URL:', data.photoURL);
+          setPhotoURL(data.photoURL);
+        }
+      } catch (error) {
+        console.error('Error loading submission:', error);
+      } finally {
+        setLoadingPhoto(false);
+      }
+    };
+    loadSubmission();
+  }, [id]);
 
   const handleApprove = () => {
     Alert.alert(
@@ -29,10 +65,41 @@ export default function ApprovalDetailScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve',
-          onPress: () => {
-            Alert.alert('Approved! 🎉', `${childName} earned ${choreCoins} coins!`, [
-              { text: 'OK', onPress: () => router.back() }
-            ]);
+          onPress: async () => {
+            try {
+              setLoading(true);
+
+              // Update submission status to approved
+              await updateDoc(doc(db, 'submissions', id as string), {
+                status: 'approved',
+                parentComment: comment,
+                approvedAt: new Date(),
+              });
+
+              // Find child and add coins
+              const { collection, query, where, getDocs } = await import('firebase/firestore');
+              const { auth } = await import('../config/firebase');
+              const childQuery = query(
+                collection(db, 'children'),
+                where('parentId', '==', auth.currentUser?.uid)
+              );
+              const childSnap = await getDocs(childQuery);
+              const childDoc = childSnap.docs.find(d => d.data().name === childName);
+
+              if (childDoc) {
+                await updateDoc(doc(db, 'children', childDoc.id), {
+                  coinBalance: increment(parseInt(choreCoins as string)),
+                });
+              }
+
+              Alert.alert('Approved! 🎉', `${childName} earned ${choreCoins} coins!`, [
+                { text: 'OK', onPress: () => router.back() }
+              ]);
+            } catch (error: any) {
+              Alert.alert('Error!', error.message);
+            } finally {
+              setLoading(false);
+            }
           }
         }
       ]
@@ -48,10 +115,26 @@ export default function ApprovalDetailScreen() {
         {
           text: 'Reject',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Rejected', `${childName} has been notified to redo the chore.`, [
-              { text: 'OK', onPress: () => router.back() }
-            ]);
+          onPress: async () => {
+            try {
+              setLoading(true);
+
+              await updateDoc(doc(db, 'submissions', id as string), {
+                status: 'rejected',
+                parentComment: comment,
+                rejectedAt: new Date(),
+              });
+
+              Alert.alert(
+                'Rejected',
+                `${childName} has been notified to redo the chore.`,
+                [{ text: 'OK', onPress: () => router.back() }]
+              );
+            } catch (error: any) {
+              Alert.alert('Error!', error.message);
+            } finally {
+              setLoading(false);
+            }
           }
         }
       ]
@@ -63,6 +146,9 @@ export default function ApprovalDetailScreen() {
     medium: '#F4B942',
     high: '#E63946',
   };
+
+  const isAiApproved = aiApproved === 'true';
+  const confidencePercent = Math.round(parseFloat(aiConfidence as string) * 100);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -113,19 +199,51 @@ export default function ApprovalDetailScreen() {
               </View>
             </View>
 
+            {/* AI Result */}
+            <Text style={styles.sectionLabel}>AI Verification Result</Text>
+            <View style={[
+              styles.aiCard,
+              isAiApproved ? styles.aiCardApproved : styles.aiCardWarning
+            ]}>
+              <View style={styles.aiHeader}>
+                <Text style={styles.aiEmoji}>{isAiApproved ? '🤖✅' : '🤖⚠️'}</Text>
+                <View style={styles.aiInfo}>
+                  <Text style={styles.aiStatus}>
+                    {isAiApproved ? 'AI Approved' : 'Needs Review'}
+                  </Text>
+                  <Text style={styles.aiConfidence}>
+                    Confidence: {confidencePercent}%
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.aiDescription}>{aiDescription}</Text>
+            </View>
+
             {/* Photo */}
             <Text style={styles.sectionLabel}>Submitted Photo</Text>
-           <Image
-             source={DETAIL_PHOTO}
-             style={styles.photo}
-              resizeMode="cover"
+            {loadingPhoto ? (
+              <View style={styles.photoLoading}>
+                <ActivityIndicator size="large" color="#4ECDC4" />
+                <Text style={styles.photoLoadingText}>Loading photo...</Text>
+              </View>
+            ) : photoURL ? (
+              <Image
+                source={{ uri: photoURL }}
+                style={styles.photo}
+                resizeMode="cover"
+                onError={(e) => console.log('Image error:', e.nativeEvent.error)}
               />
+            ) : (
+              <View style={styles.noPhoto}>
+                <Text style={styles.noPhotoText}>No photo available</Text>
+              </View>
+            )}
 
             {/* Comment */}
             <Text style={styles.sectionLabel}>Leave a Comment (optional)</Text>
             <TextInput
               style={styles.commentInput}
-              placeholder="e.g. You did an amazing job! I need more than one picture next time😊"
+              placeholder="e.g. Great job! Next time make sure to tuck in the corners 😊"
               placeholderTextColor="#aaa"
               value={comment}
               onChangeText={setComment}
@@ -136,11 +254,19 @@ export default function ApprovalDetailScreen() {
 
             {/* Action Buttons */}
             <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.rejectBtn} onPress={handleReject}>
+              <TouchableOpacity
+                style={[styles.rejectBtn, loading && styles.btnDisabled]}
+                onPress={handleReject}
+                disabled={loading}>
                 <Text style={styles.rejectBtnText}>❌ Reject</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.approveBtn} onPress={handleApprove}>
-                <Text style={styles.approveBtnText}>✅ Approve</Text>
+              <TouchableOpacity
+                style={[styles.approveBtn, loading && styles.btnDisabled]}
+                onPress={handleApprove}
+                disabled={loading}>
+                <Text style={styles.approveBtnText}>
+                  {loading ? 'Processing...' : '✅ Approve'}
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -155,8 +281,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   inner: { flex: 1 },
   scroll: { paddingBottom: 40 },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -169,8 +293,6 @@ const styles = StyleSheet.create({
   },
   backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#2D2D2D' },
-
-  // Child Card
   childCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -203,8 +325,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   priorityText: { fontSize: 12, fontWeight: '700' },
-
-  // Chore Card
   choreCard: {
     marginHorizontal: 24,
     backgroundColor: '#F9F9F9',
@@ -226,8 +346,22 @@ const styles = StyleSheet.create({
     borderColor: '#F4B942',
   },
   coinsText: { fontSize: 14, fontWeight: '700', color: '#F4B942' },
-
-  // Photo
+  aiCard: {
+    marginHorizontal: 24,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    gap: 8,
+  },
+  aiCardApproved: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
+  aiCardWarning: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
+  aiHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  aiEmoji: { fontSize: 32 },
+  aiInfo: { flex: 1 },
+  aiStatus: { fontSize: 16, fontWeight: '800', color: '#2D2D2D' },
+  aiConfidence: { fontSize: 13, color: '#888', marginTop: 2 },
+  aiDescription: { fontSize: 13, color: '#444', lineHeight: 18 },
   sectionLabel: {
     fontSize: 14,
     fontWeight: '700',
@@ -237,11 +371,31 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    height: 240,
+    height: 280,
+    marginBottom: 20,
+    backgroundColor: '#F0F0F0',
+  },
+  photoLoading: {
+    height: 200,
+    marginHorizontal: 24,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    gap: 8,
+  },
+  photoLoadingText: { fontSize: 14, color: '#888' },
+  noPhoto: {
+    height: 120,
+    marginHorizontal: 24,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 20,
   },
-
-  // Comment
+  noPhotoText: { color: '#888', fontSize: 14 },
   commentInput: {
     borderWidth: 1.5,
     borderColor: '#DDD',
@@ -254,8 +408,6 @@ const styles = StyleSheet.create({
     minHeight: 90,
     marginHorizontal: 24,
   },
-
-  // Action Buttons
   actionsRow: {
     flexDirection: 'row',
     gap: 12,
@@ -284,4 +436,5 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   approveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  btnDisabled: { opacity: 0.6 },
 });
