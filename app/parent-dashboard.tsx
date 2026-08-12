@@ -168,7 +168,7 @@ export default function ParentDashboard() {
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={styles.navText}>Rewards</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/settings')}>
           <Text style={styles.navEmoji}>⚙️</Text>
           <Text style={styles.navText}>Settings</Text>
         </TouchableOpacity>
