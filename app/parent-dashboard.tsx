@@ -10,6 +10,7 @@ import {
   View
 } from 'react-native';
 import { auth, db } from '../config/firebase';
+import { requestNotificationPermissions } from '../utils/notifications';
 
 export default function ParentDashboard() {
   const router = useRouter();
@@ -20,6 +21,9 @@ export default function ParentDashboard() {
     const loadData = async () => {
       const user = auth.currentUser;
       if (user) {
+        // Request notification permissions
+        requestNotificationPermissions();
+
         // Load parent name
         const docSnap = await getDoc(doc(db, 'users', user.uid));
         if (docSnap.exists()) {
@@ -146,7 +150,9 @@ export default function ParentDashboard() {
             <Text style={styles.actionEmoji}>✅</Text>
             <Text style={styles.actionText}>Approvals</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/settings')}>
             <Text style={styles.actionEmoji}>⚙️</Text>
             <Text style={styles.actionText}>Settings</Text>
           </TouchableOpacity>
@@ -180,8 +186,6 @@ export default function ParentDashboard() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   scroll: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 100 },
-
-  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -199,8 +203,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { fontSize: 20, fontWeight: '700', color: '#fff' },
-
-  // Section Title
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
@@ -209,8 +211,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-
-  // Kids Row
   kidsRow: { marginBottom: 28 },
   kidsRowContent: { gap: 12, paddingRight: 24 },
   noKidsText: { fontSize: 14, color: '#888', alignSelf: 'center', marginRight: 12 },
@@ -243,8 +243,6 @@ const styles = StyleSheet.create({
   },
   childBadgeText: { fontSize: 9, fontWeight: '700', color: '#fff' },
   kidCode: { fontSize: 9, color: '#888', fontWeight: '600' },
-
-  // Add Kid Card
   addKidCard: {
     backgroundColor: '#F9F9F9',
     borderRadius: 16,
@@ -266,8 +264,6 @@ const styles = StyleSheet.create({
   },
   addKidPlus: { fontSize: 28, color: '#888', fontWeight: '300' },
   addKidText: { fontSize: 14, fontWeight: '600', color: '#888' },
-
-  // Parent Card
   parentCard: {
     backgroundColor: '#F9F9F9',
     borderRadius: 14,
@@ -292,8 +288,6 @@ const styles = StyleSheet.create({
   parentName: { fontSize: 15, fontWeight: '700', color: '#2D2D2D' },
   parentRole: { fontSize: 11, color: '#888', fontWeight: '600' },
   parentArrow: { fontSize: 22, color: '#CCC' },
-
-  // Quick Actions
   actionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -311,8 +305,6 @@ const styles = StyleSheet.create({
   },
   actionEmoji: { fontSize: 22, marginBottom: 4 },
   actionText: { fontSize: 11, fontWeight: '600', color: '#2D9E98' },
-
-  // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',

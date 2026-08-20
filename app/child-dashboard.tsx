@@ -15,6 +15,7 @@ import {
   View
 } from 'react-native';
 import { db } from '../config/firebase';
+import { requestNotificationPermissions, sendPushNotification } from '../utils/notifications';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
 import { analyzeImage } from '../utils/visionApi';
 
@@ -28,56 +29,59 @@ export default function ChildDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
 
-useEffect(() => {
-  const loadData = async () => {
-    const session = await AsyncStorage.getItem('childSession');
-    if (session) {
-      const child = JSON.parse(session);
-      setChildData(child);
+  useEffect(() => {
+    const loadData = async () => {
+      const session = await AsyncStorage.getItem('childSession');
+      if (session) {
+        const child = JSON.parse(session);
+        setChildData(child);
 
-      // Load chores from Firestore
-      const choresQuery = query(
-        collection(db, 'chores'),
-        where('assignedTo', 'in', ['all', child.id])
-      );
-      const choresSnap = await getDocs(choresQuery);
-      let choresData = choresSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        completed: false,
-        verified: false,
-      }));
+        // Request notification permissions
+        requestNotificationPermissions();
 
-      // Load approved submissions to mark chores as verified
-      const approvedQuery = query(
-        collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'approved')
-      );
-      const approvedSnap = await getDocs(approvedQuery);
-      const approvedChoreIds = approvedSnap.docs.map(d => d.data().choreId);
+        // Load chores from Firestore
+        const choresQuery = query(
+          collection(db, 'chores'),
+          where('assignedTo', 'in', ['all', child.id])
+        );
+        const choresSnap = await getDocs(choresQuery);
+        let choresData = choresSnap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          completed: false,
+          verified: false,
+        }));
 
-      // Load pending submissions to mark chores as completed/pending
-      const pendingQuery = query(
-        collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'pending')
-      );
-      const pendingSnap = await getDocs(pendingQuery);
-      const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
+        // Load approved submissions
+        const approvedQuery = query(
+          collection(db, 'submissions'),
+          where('childId', '==', child.id),
+          where('status', '==', 'approved')
+        );
+        const approvedSnap = await getDocs(approvedQuery);
+        const approvedChoreIds = approvedSnap.docs.map(d => d.data().choreId);
 
-      // Update chore status based on submissions
-      choresData = choresData.map(chore => ({
-        ...chore,
-        completed: approvedChoreIds.includes(chore.id) || pendingChoreIds.includes(chore.id),
-        verified: approvedChoreIds.includes(chore.id),
-      }));
+        // Load pending submissions
+        const pendingQuery = query(
+          collection(db, 'submissions'),
+          where('childId', '==', child.id),
+          where('status', '==', 'pending')
+        );
+        const pendingSnap = await getDocs(pendingQuery);
+        const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
 
-      setChores(choresData);
-    }
-  };
-  loadData();
-}, []);
+        // Update chore status
+        choresData = choresData.map(chore => ({
+          ...chore,
+          completed: approvedChoreIds.includes(chore.id) || pendingChoreIds.includes(chore.id),
+          verified: approvedChoreIds.includes(chore.id),
+        }));
+
+        setChores(choresData);
+      }
+    };
+    loadData();
+  }, []);
 
   const completedCount = chores.filter(c => c.completed).length;
   const progress = chores.length > 0 ? completedCount / chores.length : 0;
@@ -132,88 +136,98 @@ useEffect(() => {
     }
   };
 
- const submitVerification = async () => {
-  if (!photo) {
-    Alert.alert('No photo!', 'Please take or upload a photo first!');
-    return;
-  }
-
-  try {
-    setSubmitting(true);
-
-    // Step 1 — Upload photo to Firebase Storage
-    const photoPath = `submissions/${childData.id}/${selectedChore.id}_${Date.now()}.jpg`;
-    const photoURL = await uploadPhotoToStorage(photo, photoPath);
-
-    // Step 2 — Run Google Vision AI
-    const base64 = await uriToBase64(photo);
-    const aiAnalysis = await analyzeImage(base64, selectedChore.title);
-    setAiResult(aiAnalysis);
-
-    // Step 3 — If AI rejects, block submission and ask child to retry
-    if (!aiAnalysis.isComplete) {
-      setSubmitting(false);
-      Alert.alert(
-        'AI Rejected ❌',
-        `${aiAnalysis.description}\n\nPlease redo the chore and take a new photo!`,
-        [{ text: 'Try Again', onPress: () => setPhoto(null) }]
-      );
+  const submitVerification = async () => {
+    if (!photo) {
+      Alert.alert('No photo!', 'Please take or upload a photo first!');
       return;
     }
 
-    // Step 4 — AI approved! Save submission to Firestore
-    await addDoc(collection(db, 'submissions'), {
-      choreId: selectedChore.id,
-      choreTitle: selectedChore.title,
-      choreCoins: selectedChore.coins,
-      childId: childData.id,
-      childName: childData.name,
-      childAvatar: childData.avatar,
-      parentId: childData.parentId,
-      photoURL,
-      aiApproved: aiAnalysis.isComplete,
-      aiConfidence: aiAnalysis.confidence,
-      aiDescription: aiAnalysis.description,
-      status: 'pending',
-      submittedAt: new Date(),
-    });
+    try {
+      setSubmitting(true);
 
-    // Step 5 — Update local chore state to pending
-    setChores(prev => prev.map(c =>
-      c.id === selectedChore.id ? { ...c, completed: true, verified: false } : c
-    ));
+      // Step 1 — Upload photo to Firebase Storage
+      const photoPath = `submissions/${childData.id}/${selectedChore.id}_${Date.now()}.jpg`;
+      const photoURL = await uploadPhotoToStorage(photo, photoPath);
 
-    // Step 6 — Save chore progress to AsyncStorage
-    const updatedChores = chores.map(c =>
-      c.id === selectedChore.id ? { ...c, completed: true, verified: false } : c
-    );
-    const session = await AsyncStorage.getItem('childSession');
-    if (session) {
-      const child = JSON.parse(session);
-      await AsyncStorage.setItem('childSession', JSON.stringify({
-        ...child,
-        choreProgress: updatedChores.map(c => ({
-          id: c.id,
-          completed: c.completed,
-          verified: c.verified,
-        }))
-      }));
+      // Step 2 — Run Google Vision AI
+      const base64 = await uriToBase64(photo);
+      const aiAnalysis = await analyzeImage(base64, selectedChore.title);
+      setAiResult(aiAnalysis);
+
+      // Step 3 — If AI rejects block submission
+      if (!aiAnalysis.isComplete) {
+        setSubmitting(false);
+        Alert.alert(
+          'AI Rejected ❌',
+          `${aiAnalysis.description}\n\nPlease redo the chore and take a new photo!`,
+          [{ text: 'Try Again', onPress: () => setPhoto(null) }]
+        );
+        return;
+      }
+
+      // Step 4 — Save submission to Firestore
+      await addDoc(collection(db, 'submissions'), {
+        choreId: selectedChore.id,
+        choreTitle: selectedChore.title,
+        choreCoins: selectedChore.coins,
+        childId: childData.id,
+        childName: childData.name,
+        childAvatar: childData.avatar,
+        parentId: childData.parentId,
+        photoURL,
+        aiApproved: aiAnalysis.isComplete,
+        aiConfidence: aiAnalysis.confidence,
+        aiDescription: aiAnalysis.description,
+        status: 'pending',
+        submittedAt: new Date(),
+      });
+
+      // Step 5 — Notify parent
+      try {
+        const { getDoc, doc: firestoreDoc } = await import('firebase/firestore');
+        const parentDoc = await getDoc(firestoreDoc(db, 'users', childData.parentId));
+        await sendPushNotification(
+          parentDoc.exists() ? parentDoc.data().pushToken || null : null,
+          '📸 Chore Submitted!',
+          `${childData.name} submitted "${selectedChore.title}" for approval!`,
+          { type: 'chore_submitted', choreId: selectedChore.id }
+        );
+      } catch (notifError) {
+        console.log('Notification error:', notifError);
+      }
+
+      // Step 6 — Update local chore state
+      setChores(prev => prev.map(c =>
+        c.id === selectedChore.id ? { ...c, completed: true, verified: false } : c
+      ));
+
+      // Step 7 — Save progress to AsyncStorage
+      const session = await AsyncStorage.getItem('childSession');
+      if (session) {
+        const child = JSON.parse(session);
+        await AsyncStorage.setItem('childSession', JSON.stringify({
+          ...child,
+          choreProgress: chores.map(c => ({
+            id: c.id,
+            completed: c.id === selectedChore.id ? true : c.completed,
+            verified: c.verified,
+          }))
+        }));
+      }
+
+      setModalVisible(false);
+      Alert.alert(
+        'AI Approved & Submitted! 🎉',
+        `Great job! Your chore has been verified by AI and sent to your parent for final approval. You could earn ${selectedChore.coins} coins!`,
+        [{ text: 'Awesome!' }]
+      );
+
+    } catch (error: any) {
+      Alert.alert('Error!', error.message);
+    } finally {
+      setSubmitting(false);
     }
-
-    setModalVisible(false);
-
-    Alert.alert(
-      'AI Approved & Submitted! 🎉',
-      `Great job! Your chore has been verified by AI and sent to your parent for final approval. You could earn ${selectedChore.coins} coins!`,
-      [{ text: 'Awesome!' }]
-    );
-
-  } catch (error: any) {
-    Alert.alert('Error!', error.message);
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -335,24 +349,18 @@ useEffect(() => {
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
               <View style={styles.modalCard}>
-
                 <TouchableOpacity
                   style={styles.closeBtn}
                   onPress={() => !submitting && setModalVisible(false)}>
                   <Text style={styles.closeText}>✕</Text>
                 </TouchableOpacity>
-
                 <Text style={styles.modalTitle}>Good Job! 🎉</Text>
                 <Text style={styles.modalSubtitle}>
                   Upload a photo of "{selectedChore?.title}" to verify!
                 </Text>
-
-                {/* Photo Preview */}
                 {photo && (
                   <Image source={{ uri: photo }} style={styles.photoPreview} />
                 )}
-
-                {/* AI Result */}
                 {aiResult && (
                   <View style={[
                     styles.aiResult,
@@ -364,8 +372,6 @@ useEffect(() => {
                     <Text style={styles.aiResultText}>{aiResult.description}</Text>
                   </View>
                 )}
-
-                {/* Camera & Upload Buttons */}
                 {!submitting && (
                   <View style={styles.photoButtons}>
                     <TouchableOpacity style={styles.photoBtn} onPress={takePhoto}>
@@ -378,8 +384,6 @@ useEffect(() => {
                     </TouchableOpacity>
                   </View>
                 )}
-
-                {/* Submit Button */}
                 {submitting ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#4ECDC4" />
@@ -393,7 +397,6 @@ useEffect(() => {
                     <Text style={styles.submitBtnText}>Submit for Approval ✅</Text>
                   </TouchableOpacity>
                 )}
-
               </View>
             </TouchableWithoutFeedback>
           </View>

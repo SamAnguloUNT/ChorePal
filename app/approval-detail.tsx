@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, increment, query, updateDoc, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,7 +15,8 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-import { db } from '../config/firebase';
+import { auth, db } from '../config/firebase';
+import { sendPushNotification } from '../utils/notifications';
 
 export default function ApprovalDetailScreen() {
   const router = useRouter();
@@ -37,16 +38,12 @@ export default function ApprovalDetailScreen() {
   const [photoURL, setPhotoURL] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(true);
 
-  // Load submission directly from Firestore to get real photoURL
   useEffect(() => {
     const loadSubmission = async () => {
       try {
         const submissionDoc = await getDoc(doc(db, 'submissions', id as string));
         if (submissionDoc.exists()) {
-          const data = submissionDoc.data();
-          console.log('Submission data:', data);
-          console.log('Photo URL:', data.photoURL);
-          setPhotoURL(data.photoURL);
+          setPhotoURL(submissionDoc.data().photoURL);
         }
       } catch (error) {
         console.error('Error loading submission:', error);
@@ -56,6 +53,15 @@ export default function ApprovalDetailScreen() {
     };
     loadSubmission();
   }, [id]);
+
+  const findChildDoc = async () => {
+    const childQuery = query(
+      collection(db, 'children'),
+      where('parentId', '==', auth.currentUser?.uid)
+    );
+    const childSnap = await getDocs(childQuery);
+    return childSnap.docs.find(d => d.data().name === childName);
+  };
 
   const handleApprove = () => {
     Alert.alert(
@@ -69,7 +75,7 @@ export default function ApprovalDetailScreen() {
             try {
               setLoading(true);
 
-              // Update submission status to approved
+              // Update submission status
               await updateDoc(doc(db, 'submissions', id as string), {
                 status: 'approved',
                 parentComment: comment,
@@ -77,19 +83,25 @@ export default function ApprovalDetailScreen() {
               });
 
               // Find child and add coins
-              const { collection, query, where, getDocs } = await import('firebase/firestore');
-              const { auth } = await import('../config/firebase');
-              const childQuery = query(
-                collection(db, 'children'),
-                where('parentId', '==', auth.currentUser?.uid)
-              );
-              const childSnap = await getDocs(childQuery);
-              const childDoc = childSnap.docs.find(d => d.data().name === childName);
-
+              const childDoc = await findChildDoc();
               if (childDoc) {
                 await updateDoc(doc(db, 'children', childDoc.id), {
                   coinBalance: increment(parseInt(choreCoins as string)),
                 });
+
+                // Notify child
+                try {
+                  if (childDoc.data().pushToken) {
+                    await sendPushNotification(
+                      childDoc.data().pushToken,
+                      '🎉 Chore Approved!',
+                      `Your parent approved "${choreTitle}"! You earned ${choreCoins} coins!`,
+                      { type: 'chore_approved' }
+                    );
+                  }
+                } catch (notifError) {
+                  console.log('Notification error:', notifError);
+                }
               }
 
               Alert.alert('Approved! 🎉', `${childName} earned ${choreCoins} coins!`, [
@@ -124,6 +136,21 @@ export default function ApprovalDetailScreen() {
                 parentComment: comment,
                 rejectedAt: new Date(),
               });
+
+              // Notify child
+              try {
+                const childDoc = await findChildDoc();
+                if (childDoc && childDoc.data().pushToken) {
+                  await sendPushNotification(
+                    childDoc.data().pushToken,
+                    '❌ Chore Rejected',
+                    `Your parent rejected "${choreTitle}". Please redo the chore and resubmit!`,
+                    { type: 'chore_rejected' }
+                  );
+                }
+              } catch (notifError) {
+                console.log('Notification error:', notifError);
+              }
 
               Alert.alert(
                 'Rejected',
@@ -231,7 +258,6 @@ export default function ApprovalDetailScreen() {
                 source={{ uri: photoURL }}
                 style={styles.photo}
                 resizeMode="cover"
-                onError={(e) => console.log('Image error:', e.nativeEvent.error)}
               />
             ) : (
               <View style={styles.noPhoto}>
