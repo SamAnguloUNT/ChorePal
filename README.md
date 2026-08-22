@@ -39,7 +39,13 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Change .env.example to .env
+
+   ```
+   in .env change "your_gemini_api_key_here" to your gemini key to access AI verification feature
+   ```
+
+3. Start the app
 
    ```bash
    npx expo start
