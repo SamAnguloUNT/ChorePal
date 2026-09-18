@@ -1,18 +1,26 @@
 import { useRouter } from 'expo-router';
-import { signOut } from 'firebase/auth';
-import { useState } from 'react';
+import { sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import {
-    Alert,
-    Linking,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Linking,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
+
+import {
+  registerForPushNotifications,
+  requestNotificationPermissions,
+} from '../utils/notifications';
 
 const FAQ_ITEMS = [
   {
@@ -61,6 +69,164 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [faqVisible, setFaqVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+
+useEffect(() => {
+  const loadProfile = async () => {
+    const user = auth.currentUser;
+
+    if (!user) return;
+
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+
+        const name = data.name || '';
+        setProfileName(name);
+
+        setNotificationsEnabled(data.notificationsEnabled ?? false);
+    }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  };
+
+  loadProfile();
+}, []);
+
+const handleSaveProfile = async () => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    Alert.alert('Error', 'No user is currently signed in.');
+    return;
+  }
+
+  if (!profileName.trim()) {
+    Alert.alert('Error', 'Please enter a name.');
+    return;
+  }
+
+  try {
+    setSavingProfile(true);
+
+    await updateDoc(doc(db, 'users', user.uid), {
+      name: profileName.trim(),
+    });
+
+    
+    setEditProfileVisible(false);
+
+    Alert.alert('Success', 'Your profile has been updated.');
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    Alert.alert('Error', 'Unable to update your profile. Please try again.');
+  } finally {
+    setSavingProfile(false);
+  }
+};
+
+  const handleChangePassword = () => {
+  const email = auth.currentUser?.email;
+
+  if (!email) {
+    Alert.alert('Error', 'No email address is associated with this account.');
+    return;
+  }
+
+  Alert.alert(
+    'Change Password',
+    `Send a password reset link to ${email}?`,
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Send Email',
+        onPress: async () => {
+          try {
+            await sendPasswordResetEmail(auth, email);
+
+            Alert.alert(
+              'Email Sent',
+              'Check your inbox for a password reset link.'
+            );
+          } catch (error) {
+            console.error('Password reset error:', error);
+            Alert.alert(
+              'Error',
+              'Unable to send the password reset email. Please try again.'
+            );
+          }
+        },
+      },
+    ]
+  );
+};
+
+const handleNotificationsToggle = async (enabled: boolean) => {
+  const user = auth.currentUser;
+
+  if (!user) {
+    Alert.alert('Error', 'No user is currently signed in.');
+    return;
+  }
+
+  try {
+    setSavingNotifications(true);
+
+    if (enabled) {
+      const permissionGranted = await requestNotificationPermissions();
+
+      if (!permissionGranted) {
+        setNotificationsEnabled(false);
+
+        Alert.alert(
+          'Notifications Disabled',
+          'ChorePal needs notification permission before notifications can be enabled.'
+        );
+
+        return;
+      }
+
+      // This will save the push token to the parent's Firestore account
+      // when running in a build that supports remote push notifications.
+      await registerForPushNotifications(user.uid, 'parent');
+    }
+
+    if (enabled) {
+        await updateDoc(doc(db, 'users', user.uid), {
+        notificationsEnabled: true,
+    });
+    } else {
+      await updateDoc(doc(db, 'users', user.uid), {
+      notificationsEnabled: false,
+      pushToken: null,
+    });
+}
+
+
+
+    setNotificationsEnabled(enabled);
+  } catch (error) {
+    console.error('Notification settings error:', error);
+
+    Alert.alert(
+      'Error',
+      'Unable to update notification settings. Please try again.'
+    );
+  } finally {
+    setSavingNotifications(false);
+  }
+};
 
   const handleLogout = async () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -100,9 +266,9 @@ export default function SettingsScreen() {
     {
       title: 'Account',
       items: [
-        { icon: '👤', label: 'Edit Profile', onPress: () => Alert.alert('Coming Soon!', 'Profile editing will be available soon.') },
-        { icon: '🔒', label: 'Change Password', onPress: () => Alert.alert('Coming Soon!', 'Password change will be available soon.') },
-        { icon: '🔔', label: 'Notifications', onPress: () => Alert.alert('Coming Soon!', 'Notification settings will be available soon.') },
+        { icon: '👤', label: 'Edit Profile', onPress: () => setEditProfileVisible(true) },
+        { icon: '🔒', label: 'Change Password', onPress: handleChangePassword},
+        { icon: '🔔', label: 'Notifications', onPress: () => setNotificationsVisible(true) },
       ]
     },
     {
@@ -185,6 +351,104 @@ export default function SettingsScreen() {
 
       </ScrollView>
 
+{/* Edit Profile Modal */}
+<Modal
+  visible={editProfileVisible}
+  animationType="slide"
+  onRequestClose={() => setEditProfileVisible(false)}
+>
+  <SafeAreaView style={styles.editProfileContainer}>
+
+    <View style={styles.editProfileHeader}>
+      <TouchableOpacity onPress={() => setEditProfileVisible(false)}>
+        <Text style={styles.backText}>← Back</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.headerTitle}>Edit Profile</Text>
+
+      <View style={{ width: 40 }} />
+    </View>
+
+    <View style={styles.editProfileContent}>
+      <Text style={styles.inputLabel}>Name</Text>
+
+      <TextInput
+        style={styles.profileInput}
+        value={profileName}
+        onChangeText={setProfileName}
+        placeholder="Enter your name"
+        autoCapitalize="words"
+      />
+
+      <Text style={styles.inputLabel}>Email</Text>
+
+      <TextInput
+        style={[styles.profileInput, styles.disabledInput]}
+        value={auth.currentUser?.email || ''}
+        editable={false}
+      />
+
+      <TouchableOpacity
+        style={styles.saveProfileBtn}
+        onPress={handleSaveProfile}
+        disabled={savingProfile}
+      >
+        <Text style={styles.saveProfileBtnText}>
+          {savingProfile ? 'Saving...' : 'Save Changes'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+
+  </SafeAreaView>
+</Modal>
+
+{/* Notifications Modal */}
+<Modal
+  visible={notificationsVisible}
+  animationType="slide"
+  onRequestClose={() => setNotificationsVisible(false)}
+>
+  <SafeAreaView style={styles.notificationsContainer}>
+
+    <View style={styles.notificationsHeader}>
+      <TouchableOpacity onPress={() => setNotificationsVisible(false)}>
+        <Text style={styles.backText}>← Back</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.headerTitle}>Notifications</Text>
+
+      <View style={{ width: 40 }} />
+    </View>
+
+    <View style={styles.notificationsContent}>
+
+      <View style={styles.notificationSetting}>
+        <View style={styles.notificationTextContainer}>
+          <Text style={styles.notificationTitle}>
+            Push Notifications
+          </Text>
+
+          <Text style={styles.notificationDescription}>
+            Receive alerts when chores are completed and need your attention.
+          </Text>
+        </View>
+
+        <Switch
+          value={notificationsEnabled}
+          onValueChange={handleNotificationsToggle}
+          disabled={savingNotifications}
+        />
+      </View>
+
+      <Text style={styles.notificationNote}>
+        You can also change notification permissions later in your phones settings.
+      </Text>
+
+    </View>
+
+  </SafeAreaView>
+</Modal>
+
       {/* FAQ Modal */}
       <Modal
         visible={faqVisible}
@@ -224,7 +488,7 @@ export default function SettingsScreen() {
             {/* Contact Support */}
             <View style={styles.contactCard}>
               <Text style={styles.contactTitle}>Still have questions?</Text>
-              <Text style={styles.contactSubtitle}>We're here to help!</Text>
+              <Text style={styles.contactSubtitle}>We are here to help!</Text>
               <TouchableOpacity style={styles.contactBtn} onPress={handleContact}>
                 <Text style={styles.contactBtnText}>📧 Contact Support</Text>
               </TouchableOpacity>
@@ -386,4 +650,105 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   contactBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  // Edit Profile
+editProfileContainer: {
+  flex: 1,
+  backgroundColor: '#FFFFFF',
+},
+editProfileHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingHorizontal: 24,
+  paddingTop: 16,
+  paddingBottom: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: '#EEE',
+},
+editProfileContent: {
+  padding: 24,
+},
+inputLabel: {
+  fontSize: 14,
+  fontWeight: '700',
+  color: '#2D2D2D',
+  marginBottom: 8,
+  marginTop: 16,
+},
+profileInput: {
+  backgroundColor: '#F9F9F9',
+  borderWidth: 1,
+  borderColor: '#DDD',
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  paddingVertical: 14,
+  fontSize: 16,
+  color: '#2D2D2D',
+},
+disabledInput: {
+  backgroundColor: '#F1F1F1',
+  color: '#888',
+},
+saveProfileBtn: {
+  backgroundColor: '#4ECDC4',
+  borderRadius: 12,
+  paddingVertical: 16,
+  alignItems: 'center',
+  marginTop: 28,
+},
+saveProfileBtnText: {
+  color: '#FFFFFF',
+  fontSize: 16,
+  fontWeight: '700',
+},
+
+// Notifications
+notificationsContainer: {
+  flex: 1,
+  backgroundColor: '#FFFFFF',
+},
+notificationsHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingHorizontal: 24,
+  paddingTop: 16,
+  paddingBottom: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: '#EEE',
+},
+notificationsContent: {
+  padding: 24,
+},
+notificationSetting: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  backgroundColor: '#F9F9F9',
+  borderRadius: 14,
+  padding: 18,
+},
+notificationTextContainer: {
+  flex: 1,
+  paddingRight: 16,
+},
+notificationTitle: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#2D2D2D',
+},
+notificationDescription: {
+  fontSize: 13,
+  color: '#777',
+  marginTop: 5,
+  lineHeight: 18,
+},
+notificationNote: {
+  fontSize: 12,
+  color: '#999',
+  marginTop: 16,
+  lineHeight: 18,
+},
+
 });
