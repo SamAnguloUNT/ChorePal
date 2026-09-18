@@ -1,7 +1,7 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   SafeAreaView, ScrollView,
@@ -10,25 +10,53 @@ import {
   View
 } from 'react-native';
 import { auth, db } from '../config/firebase';
-import { requestNotificationPermissions } from '../utils/notifications';
+import { registerForPushNotifications } from '../utils/notifications';
 
 export default function ParentDashboard() {
   const router = useRouter();
   const [parentName, setParentName] = useState('');
   const [children, setChildren] = useState<any[]>([]);
+  useFocusEffect(
+  useCallback(() => {
+    const refreshParentName = async () => {
+      const user = auth.currentUser;
+
+      if (!user) return;
+
+      try {
+        const docSnap = await getDoc(doc(db, 'users', user.uid));
+
+        if (docSnap.exists()) {
+          setParentName(docSnap.data().name || '');
+        }
+      } catch (error) {
+        console.error('Error refreshing parent name:', error);
+      }
+    };
+
+    refreshParentName();
+  }, [])
+);
 
   useEffect(() => {
     const loadData = async () => {
       const user = auth.currentUser;
       if (user) {
-        // Request notification permissions
-        requestNotificationPermissions();
 
-        // Load parent name
-        const docSnap = await getDoc(doc(db, 'users', user.uid));
+
+      // Load parent data
+      const docSnap = await getDoc(doc(db, 'users', user.uid));
+
         if (docSnap.exists()) {
-          setParentName(docSnap.data().name);
+      const parentData = docSnap.data();
+
+        setParentName(parentData.name || '');
+
+        // Register this device only if the parent enabled notifications
+        if (parentData.notificationsEnabled) {
+        await registerForPushNotifications(user.uid, 'parent');
         }
+      }
 
         // Load children
         const childrenQuery = query(
