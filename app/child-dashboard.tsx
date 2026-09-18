@@ -28,6 +28,7 @@ export default function ChildDashboard() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -36,10 +37,8 @@ export default function ChildDashboard() {
         const child = JSON.parse(session);
         setChildData(child);
 
-        // Request notification permissions
         requestNotificationPermissions();
 
-        // Load chores from Firestore
         const choresQuery = query(
           collection(db, 'chores'),
           where('assignedTo', 'in', ['all', child.id])
@@ -52,7 +51,6 @@ export default function ChildDashboard() {
           verified: false,
         }));
 
-        // Load approved submissions
         const approvedQuery = query(
           collection(db, 'submissions'),
           where('childId', '==', child.id),
@@ -61,7 +59,6 @@ export default function ChildDashboard() {
         const approvedSnap = await getDocs(approvedQuery);
         const approvedChoreIds = approvedSnap.docs.map(d => d.data().choreId);
 
-        // Load pending submissions
         const pendingQuery = query(
           collection(db, 'submissions'),
           where('childId', '==', child.id),
@@ -70,7 +67,6 @@ export default function ChildDashboard() {
         const pendingSnap = await getDocs(pendingQuery);
         const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
 
-        // Update chore status
         choresData = choresData.map(chore => ({
           ...chore,
           completed: approvedChoreIds.includes(chore.id) || pendingChoreIds.includes(chore.id),
@@ -104,6 +100,7 @@ export default function ChildDashboard() {
     setSelectedChore(chore);
     setPhoto(null);
     setAiResult(null);
+    setSubmitted(false);
     setModalVisible(true);
   };
 
@@ -121,6 +118,7 @@ export default function ChildDashboard() {
     if (!result.canceled) {
       setPhoto(result.assets[0].uri);
       setAiResult(null);
+      setSubmitted(false);
     }
   };
 
@@ -133,6 +131,7 @@ export default function ChildDashboard() {
     if (!result.canceled) {
       setPhoto(result.assets[0].uri);
       setAiResult(null);
+      setSubmitted(false);
     }
   };
 
@@ -152,20 +151,17 @@ export default function ChildDashboard() {
       // Step 2 — Run Google Vision AI
       const base64 = await uriToBase64(photo);
       const aiAnalysis = await analyzeImage(base64, selectedChore.title);
+
+      // Step 3 — Show AI result in modal
       setAiResult(aiAnalysis);
 
-      // Step 3 — If AI rejects block submission
+      // Step 4 — If AI rejects block submission
       if (!aiAnalysis.isComplete) {
         setSubmitting(false);
-        Alert.alert(
-          'AI Rejected ❌',
-          `${aiAnalysis.description}\n\nPlease redo the chore and take a new photo!`,
-          [{ text: 'Try Again', onPress: () => setPhoto(null) }]
-        );
         return;
       }
 
-      // Step 4 — Save submission to Firestore
+      // Step 5 — Save submission to Firestore
       await addDoc(collection(db, 'submissions'), {
         choreId: selectedChore.id,
         choreTitle: selectedChore.title,
@@ -182,7 +178,10 @@ export default function ChildDashboard() {
         submittedAt: new Date(),
       });
 
-      // Step 5 — Notify parent
+      // Step 6 — Mark as submitted
+      setSubmitted(true);
+
+      // Step 7 — Notify parent
       try {
         const { getDoc, doc: firestoreDoc } = await import('firebase/firestore');
         const parentDoc = await getDoc(firestoreDoc(db, 'users', childData.parentId));
@@ -196,12 +195,12 @@ export default function ChildDashboard() {
         console.log('Notification error:', notifError);
       }
 
-      // Step 6 — Update local chore state
+      // Step 8 — Update local chore state
       setChores(prev => prev.map(c =>
         c.id === selectedChore.id ? { ...c, completed: true, verified: false } : c
       ));
 
-      // Step 7 — Save progress to AsyncStorage
+      // Step 9 — Save progress to AsyncStorage
       const session = await AsyncStorage.getItem('childSession');
       if (session) {
         const child = JSON.parse(session);
@@ -214,13 +213,6 @@ export default function ChildDashboard() {
           }))
         }));
       }
-
-      setModalVisible(false);
-      Alert.alert(
-        'AI Approved & Submitted! 🎉',
-        `Great job! Your chore has been verified by AI and sent to your parent for final approval. You could earn ${selectedChore.coins} coins!`,
-        [{ text: 'Awesome!' }]
-      );
 
     } catch (error: any) {
       Alert.alert('Error!', error.message);
@@ -344,59 +336,118 @@ export default function ChildDashboard() {
         visible={modalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setModalVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => !submitting && setModalVisible(false)}>
+        onRequestClose={() => {
+          if (!submitting) {
+            setModalVisible(false);
+            setAiResult(null);
+            setPhoto(null);
+            setSubmitted(false);
+          }
+        }}>
+        <TouchableWithoutFeedback onPress={() => !submitting && !aiResult && setModalVisible(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
               <View style={styles.modalCard}>
-                <TouchableOpacity
-                  style={styles.closeBtn}
-                  onPress={() => !submitting && setModalVisible(false)}>
-                  <Text style={styles.closeText}>✕</Text>
-                </TouchableOpacity>
-                <Text style={styles.modalTitle}>Good Job! 🎉</Text>
-                <Text style={styles.modalSubtitle}>
-                  Upload a photo of "{selectedChore?.title}" to verify!
+
+                {/* Close button — only show if not submitting and no result yet */}
+                {!submitting && !aiResult && (
+                  <TouchableOpacity
+                    style={styles.closeBtn}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setPhoto(null);
+                    }}>
+                    <Text style={styles.closeText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+
+                <Text style={styles.modalTitle}>
+                  {aiResult
+                    ? aiResult.isComplete
+                      ? 'Great Job! 🎉'
+                      : 'Not Quite! 🤔'
+                    : 'Good Job! 📸'}
                 </Text>
+
+                <Text style={styles.modalSubtitle}>
+                  {aiResult
+                    ? aiResult.isComplete
+                      ? submitted
+                        ? 'Your chore has been sent to your parent for final approval!'
+                        : 'AI is reviewing your photo...'
+                      : 'Please redo the chore and try again!'
+                    : `Upload a photo of "${selectedChore?.title}" to verify!`}
+                </Text>
+
+                {/* Photo Preview */}
                 {photo && (
                   <Image source={{ uri: photo }} style={styles.photoPreview} />
                 )}
+
+                {/* AI Feedback */}
                 {aiResult && (
                   <View style={[
-                    styles.aiResult,
-                    aiResult.isComplete ? styles.aiResultSuccess : styles.aiResultWarning
+                    styles.aiFeedback,
+                    aiResult.isComplete ? styles.aiFeedbackSuccess : styles.aiFeedbackWarning
                   ]}>
-                    <Text style={styles.aiResultEmoji}>
-                      {aiResult.isComplete ? '🤖✅' : '🤖⚠️'}
+                    <Text style={styles.aiFeedbackEmoji}>
+                      {aiResult.isComplete ? '🤖✅' : '🤖❌'}
                     </Text>
-                    <Text style={styles.aiResultText}>{aiResult.description}</Text>
+                    <Text style={styles.aiFeedbackText}>{aiResult.description}</Text>
                   </View>
                 )}
-                {!submitting && (
-                  <View style={styles.photoButtons}>
-                    <TouchableOpacity style={styles.photoBtn} onPress={takePhoto}>
-                      <Text style={styles.photoBtnEmoji}>📷</Text>
-                      <Text style={styles.photoBtnText}>Take Photo</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.photoBtn} onPress={uploadPhoto}>
-                      <Text style={styles.photoBtnEmoji}>📤</Text>
-                      <Text style={styles.photoBtnText}>Upload</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+
+                {/* Buttons */}
                 {submitting ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#4ECDC4" />
-                    <Text style={styles.loadingText}>Uploading & analyzing with AI...</Text>
+                    <Text style={styles.loadingText}>Analyzing with AI... Please wait!</Text>
                   </View>
-                ) : (
+                ) : aiResult && aiResult.isComplete && submitted ? (
+                  // AI approved and submitted — show done button
                   <TouchableOpacity
-                    style={[styles.submitBtn, !photo && styles.submitBtnDisabled]}
-                    onPress={submitVerification}
-                    disabled={!photo}>
-                    <Text style={styles.submitBtnText}>Submit for Approval ✅</Text>
+                    style={styles.doneBtn}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setAiResult(null);
+                      setPhoto(null);
+                      setSubmitted(false);
+                    }}>
+                    <Text style={styles.doneBtnText}>Awesome! I'll wait for approval 🎉</Text>
                   </TouchableOpacity>
+                ) : aiResult && !aiResult.isComplete ? (
+                  // AI rejected — show retry button
+                  <TouchableOpacity
+                    style={styles.retryBtn}
+                    onPress={() => {
+                      setPhoto(null);
+                      setAiResult(null);
+                      setSubmitted(false);
+                    }}>
+                    <Text style={styles.retryBtnText}>Try Again 📸</Text>
+                  </TouchableOpacity>
+                ) : (
+                  // No result yet — show camera/upload and submit
+                  <>
+                    <View style={styles.photoButtons}>
+                      <TouchableOpacity style={styles.photoBtn} onPress={takePhoto}>
+                        <Text style={styles.photoBtnEmoji}>📷</Text>
+                        <Text style={styles.photoBtnText}>Take Photo</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.photoBtn} onPress={uploadPhoto}>
+                        <Text style={styles.photoBtnEmoji}>📤</Text>
+                        <Text style={styles.photoBtnText}>Upload</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.submitBtn, !photo && styles.submitBtnDisabled]}
+                      onPress={submitVerification}
+                      disabled={!photo}>
+                      <Text style={styles.submitBtnText}>Submit for AI Review ✅</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
+
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -502,7 +553,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1.5,
   },
-  choreCompleted: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
+  choreCompleted: { backgroundColor: '#dbd7d7b9', borderColor: '#4ECDC4' },
   choreIncomplete: { backgroundColor: '#FFF5F5', borderColor: '#FFB3B3' },
   choreLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   choreStatusIcon: {
@@ -512,7 +563,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statusComplete: { backgroundColor: '#E0FFF4' },
+  statusComplete: { backgroundColor: '#4ECDC4' },
   statusIncomplete: { backgroundColor: '#FFE5E5' },
   statusEmoji: { fontSize: 16 },
   choreTitle: { fontSize: 14, fontWeight: '700', color: '#2D2D2D' },
@@ -579,45 +630,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
+    maxHeight: '90%',
   },
   closeBtn: { alignSelf: 'flex-end', marginBottom: 4 },
   closeText: { fontSize: 18, color: '#999' },
-  modalTitle: { fontSize: 24, fontWeight: '800', color: '#2D2D2D', marginBottom: 6 },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: '#2D2D2D', marginBottom: 6 },
   modalSubtitle: { fontSize: 14, color: '#888', marginBottom: 16, lineHeight: 20 },
   photoPreview: {
     width: '100%',
-    height: 180,
+    height: 160,
     borderRadius: 12,
     marginBottom: 16,
     backgroundColor: '#F0F0F0',
   },
-  aiResult: {
-    borderRadius: 12,
-    padding: 12,
+  aiFeedback: {
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    borderWidth: 1.5,
   },
-  aiResultSuccess: { backgroundColor: '#F0FFF4', borderWidth: 1, borderColor: '#4ECDC4' },
-  aiResultWarning: { backgroundColor: '#FFF8E1', borderWidth: 1, borderColor: '#F4B942' },
-  aiResultEmoji: { fontSize: 24 },
-  aiResultText: { flex: 1, fontSize: 13, color: '#444', fontWeight: '600' },
+  aiFeedbackSuccess: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
+  aiFeedbackWarning: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
+  aiFeedbackEmoji: { fontSize: 22 },
+  aiFeedbackText: { fontSize: 14, color: '#444', fontWeight: '500', lineHeight: 20 },
   photoButtons: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   photoBtn: {
     flex: 1,
     backgroundColor: '#F0FFFE',
     borderRadius: 14,
-    padding: 16,
+    padding: 14,
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#4ECDC4',
     gap: 6,
   },
-  photoBtnEmoji: { fontSize: 28 },
+  photoBtnEmoji: { fontSize: 26 },
   photoBtnText: { fontSize: 13, fontWeight: '600', color: '#4ECDC4' },
   loadingContainer: { alignItems: 'center', gap: 12, paddingVertical: 16 },
-  loadingText: { fontSize: 14, color: '#888', fontWeight: '600' },
+  loadingText: { fontSize: 14, color: '#888', fontWeight: '600', textAlign: 'center' },
   submitBtn: {
     backgroundColor: '#4ECDC4',
     borderRadius: 12,
@@ -631,4 +682,28 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { backgroundColor: '#CCC', shadowOpacity: 0 },
   submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  doneBtn: {
+    backgroundColor: '#4ECDC4',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  doneBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  retryBtn: {
+    backgroundColor: '#E63946',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    shadowColor: '#E63946',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  retryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

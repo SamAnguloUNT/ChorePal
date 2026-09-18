@@ -227,7 +227,7 @@ export default function ApprovalDetailScreen() {
             </View>
 
             {/* AI Result */}
-            <Text style={styles.sectionLabel}>AI Verification Result</Text>
+            <Text style={styles.sectionLabel}>ChorePal Verification Result</Text>
             <View style={[
               styles.aiCard,
               isAiApproved ? styles.aiCardApproved : styles.aiCardWarning
@@ -236,7 +236,7 @@ export default function ApprovalDetailScreen() {
                 <Text style={styles.aiEmoji}>{isAiApproved ? '🤖✅' : '🤖⚠️'}</Text>
                 <View style={styles.aiInfo}>
                   <Text style={styles.aiStatus}>
-                    {isAiApproved ? 'AI Approved' : 'Needs Review'}
+                    {isAiApproved ? 'ChorePal Approved' : 'Needs Review'}
                   </Text>
                   <Text style={styles.aiConfidence}>
                     Confidence: {confidencePercent}%
