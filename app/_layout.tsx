@@ -67,6 +67,7 @@ export default function RootLayout() {
       <Stack.Screen name="chore-list" />
       <Stack.Screen name="rewards-list" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="discipline" />
     </Stack>
   );
 }
