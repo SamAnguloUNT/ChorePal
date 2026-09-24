@@ -43,26 +43,74 @@ export default function RootLayout() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#fff',
+        }}
+      >
         <ActivityIndicator size="large" color="#4ECDC4" />
       </View>
     );
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',     // clean default
+        animationDuration: 260,            // snappier feel
+        gestureEnabled: true,
+        fullScreenGestureEnabled: true,    // better iOS swipe back
+        contentStyle: { backgroundColor: '#F7F9FA' },
+      }}
+    >
+      {/* Auth screens */}
       <Stack.Screen name="index" />
       <Stack.Screen name="parent-login" />
       <Stack.Screen name="child-login" />
       <Stack.Screen name="sign-up" />
-      <Stack.Screen name="parent-dashboard" />
+
+      
+<Stack.Screen
+  name="parent-dashboard"
+  options={{
+    gestureEnabled: false,           
+    headerBackVisible: false,
+  }}
+/>
+
+<Stack.Screen
+  name="child-dashboard"
+  options={{
+    gestureEnabled: false,           
+    headerBackVisible: false,
+  }}
+/>
+
+      
+      <Stack.Screen
+        name="create-chore"
+        options={{
+          animation: 'fade_from_bottom',
+          presentation: 'card',
+        }}
+      />
+      <Stack.Screen
+        name="create-reward"
+        options={{
+          animation: 'fade_from_bottom',
+          presentation: 'card',
+        }}
+      />
+
+      {/* Other screens */}
       <Stack.Screen name="add-child" />
       <Stack.Screen name="family-code" />
-      <Stack.Screen name="child-dashboard" />
-      <Stack.Screen name="create-chore" />
       <Stack.Screen name="approvals" />
       <Stack.Screen name="approval-detail" />
-      <Stack.Screen name="create-reward" />
       <Stack.Screen name="child-rewards" />
       <Stack.Screen name="chore-list" />
       <Stack.Screen name="rewards-list" />
