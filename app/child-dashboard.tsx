@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,6 +29,8 @@ export default function ChildDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [disciplineNotification, setDisciplineNotification] = useState<any>(null);
+  const [disciplineModalVisible, setDisciplineModalVisible] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -78,6 +80,63 @@ export default function ChildDashboard() {
     };
     loadData();
   }, []);
+
+  // Listen for Discipline System deductions in real time.
+  // If the child is using the app when points are removed, the popup appears immediately.
+  // If the app was closed, the newest unseen deduction appears the next time the child opens the dashboard.
+  useEffect(() => {
+    if (!childData?.id) return;
+
+    const childRef = doc(db, 'children', childData.id);
+
+    const unsubscribe = onSnapshot(childRef, async (snapshot) => {
+      if (!snapshot.exists()) return;
+
+      const freshChildData = {
+        id: snapshot.id,
+        ...snapshot.data(),
+      } as any;
+
+      // Keep the displayed coin balance current.
+      setChildData((previous: any) => ({
+        ...previous,
+        ...freshChildData,
+      }));
+
+      const history = Array.isArray(freshChildData.disciplineHistory)
+        ? freshChildData.disciplineHistory
+        : [];
+
+      // Only treat entries that actually removed points as deductions.
+      const validDeductions = history.filter(
+        (item: any) => Number(item?.pointsDeducted || 0) > 0
+      );
+
+      if (validDeductions.length === 0) return;
+
+      // The Discipline System appends new entries to the history array.
+      const latestDeduction = validDeductions[validDeductions.length - 1];
+
+      const notificationId = [
+        latestDeduction.createdAt || '',
+        latestDeduction.pointsDeducted || 0,
+        latestDeduction.reason || '',
+      ].join('|');
+
+      const storageKey = `lastSeenDiscipline_${childData.id}`;
+      const lastSeen = await AsyncStorage.getItem(storageKey);
+
+      if (lastSeen !== notificationId) {
+        setDisciplineNotification(latestDeduction);
+        setDisciplineModalVisible(true);
+
+        // Remember this deduction so the same popup does not appear repeatedly.
+        await AsyncStorage.setItem(storageKey, notificationId);
+      }
+    });
+
+    return unsubscribe;
+  }, [childData?.id]);
 
   const completedCount = chores.filter(c => c.completed).length;
   const progress = chores.length > 0 ? completedCount / chores.length : 0;
@@ -330,6 +389,48 @@ export default function ChildDashboard() {
           <Text style={styles.navText}>Rewards</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Automatic Discipline Deduction Notification */}
+      <Modal
+        visible={disciplineModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDisciplineModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDisciplineModalVisible(false)}>
+          <View style={styles.disciplineModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.disciplineModalCard}>
+                <TouchableOpacity
+                  style={styles.disciplineCloseButton}
+                  onPress={() => setDisciplineModalVisible(false)}
+                >
+                  <Text style={styles.disciplineCloseText}>✕</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.disciplineModalEmoji}>⚠️</Text>
+                <Text style={styles.disciplineModalTitle}>Point Deduction</Text>
+
+                <Text style={styles.disciplinePointsLost}>
+                  -{disciplineNotification?.pointsDeducted || 0} points
+                </Text>
+
+                <Text style={styles.disciplineReasonLabel}>Reason</Text>
+                <Text style={styles.disciplineReasonText}>
+                  {disciplineNotification?.reason || 'No reason provided.'}
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.disciplineDoneButton}
+                  onPress={() => setDisciplineModalVisible(false)}
+                >
+                  <Text style={styles.disciplineDoneButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* Verification Modal */}
       <Modal
@@ -613,6 +714,87 @@ const styles = StyleSheet.create({
   navEmoji: { fontSize: 22 },
   navText: { fontSize: 11, color: '#888', fontWeight: '600' },
   navTextActive: { color: '#4ECDC4' },
+
+  // Automatic Discipline System deduction popup
+  disciplineModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+  disciplineModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 7,
+  },
+  disciplineCloseButton: {
+    alignSelf: 'flex-end',
+    padding: 4,
+  },
+  disciplineCloseText: {
+    fontSize: 18,
+    color: '#999',
+    fontWeight: '700',
+  },
+  disciplineModalEmoji: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  disciplineModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#2D2D2D',
+    marginBottom: 10,
+  },
+  disciplinePointsLost: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#E63946',
+    marginBottom: 18,
+  },
+  disciplineReasonLabel: {
+    alignSelf: 'flex-start',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+  },
+  disciplineReasonText: {
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    padding: 12,
+    color: '#444',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#FFD6D6',
+  },
+  disciplineDoneButton: {
+    alignSelf: 'stretch',
+    backgroundColor: '#4ECDC4',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  disciplineDoneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
