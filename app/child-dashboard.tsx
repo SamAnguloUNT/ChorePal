@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import * as Speech from 'expo-speech';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
@@ -14,6 +15,7 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
+import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
 import { requestNotificationPermissions, sendPushNotification } from '../utils/notifications';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
@@ -137,6 +139,22 @@ export default function ChildDashboard() {
 
     return unsubscribe;
   }, [childData?.id]);
+
+  // Text-to-speech: read the AI photo check result aloud as soon as it comes back
+  useEffect(() => {
+    if (!aiResult) return;
+
+    const message = aiResult.isComplete
+      ? `Great job! ${aiResult.description}`
+      : `Not quite! ${aiResult.description} Please redo the chore and try again.`;
+
+    Speech.stop();
+    Speech.speak(message, { language: 'en-US', rate: 0.85, pitch: 1.1 });
+
+    return () => {
+      Speech.stop();
+    };
+  }, [aiResult]);
 
   const completedCount = chores.filter(c => c.completed).length;
   const progress = chores.length > 0 ? completedCount / chores.length : 0;
@@ -342,7 +360,7 @@ export default function ChildDashboard() {
                   ]}>
                     <Text style={styles.statusEmoji}>{chore.completed ? '✅' : '❌'}</Text>
                   </View>
-                  <View>
+                  <View style={styles.choreTextBlock}>
                     <Text style={[
                       styles.choreTitle,
                       chore.completed && styles.choreTitleDone
@@ -351,6 +369,11 @@ export default function ChildDashboard() {
                       Due today | {chore.coins} 🪙
                     </Text>
                   </View>
+                  {/* Text-to-speech: read the chore aloud */}
+                  <TextToSpeech
+                    text={`${chore.title}. It's worth ${chore.coins} coins.`}
+                    size={24}
+                  />
                 </View>
                 {!chore.completed && (
                   <TouchableOpacity
@@ -419,6 +442,14 @@ export default function ChildDashboard() {
                 <Text style={styles.disciplineReasonText}>
                   {disciplineNotification?.reason || 'No reason provided.'}
                 </Text>
+
+                {/* Text-to-speech: read the deduction and reason aloud */}
+                <View style={styles.speakRow}>
+                  <TextToSpeech
+                    text={`You lost ${disciplineNotification?.pointsDeducted || 0} points. The reason is: ${disciplineNotification?.reason || 'No reason provided.'}`}
+                    size={28}
+                  />
+                </View>
 
                 <TouchableOpacity
                   style={styles.disciplineDoneButton}
@@ -495,6 +526,8 @@ export default function ChildDashboard() {
                       {aiResult.isComplete ? '🤖✅' : '🤖❌'}
                     </Text>
                     <Text style={styles.aiFeedbackText}>{aiResult.description}</Text>
+                    {/* Text-to-speech: replay the AI result */}
+                    <TextToSpeech text={aiResult.description} size={24} />
                   </View>
                 )}
 
@@ -657,6 +690,7 @@ const styles = StyleSheet.create({
   choreCompleted: { backgroundColor: '#dbd7d7b9', borderColor: '#4ECDC4' },
   choreIncomplete: { backgroundColor: '#FFF5F5', borderColor: '#FFB3B3' },
   choreLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  choreTextBlock: { flexShrink: 1 },
   choreStatusIcon: {
     width: 36,
     height: 36,
@@ -778,9 +812,13 @@ const styles = StyleSheet.create({
     color: '#444',
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 18,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#FFD6D6',
+  },
+  speakRow: {
+    alignItems: 'center',
+    marginBottom: 12,
   },
   disciplineDoneButton: {
     alignSelf: 'stretch',
