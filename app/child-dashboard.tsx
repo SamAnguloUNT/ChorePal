@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
@@ -17,7 +16,7 @@ import {
 } from 'react-native';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
-import { requestNotificationPermissions, sendPushNotification } from '../utils/notifications';
+import { registerForPushNotifications, sendPushNotification } from '../utils/notifications';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
 import { analyzeImage } from '../utils/visionApi';
 
@@ -41,10 +40,26 @@ export default function ChildDashboard() {
         const child = JSON.parse(session);
         setChildData(child);
 
-        requestNotificationPermissions();
+        // Asks for permission AND saves this child's push token to their children doc,
+        // so the parent can send approve/reject notifications to this device.
+        registerForPushNotifications(child.id, 'child');
 
+        // FIX: Without a parentId we can't tell which family this child belongs to,
+        // and querying with `undefined` would throw. Show no chores instead of
+        // risking chores from other families.
+        if (!child.parentId) {
+          console.log('Child session is missing parentId — cannot load chores.');
+          setChores([]);
+          return;
+        }
+
+        // FIX: Scope chores to this child's parent. Previously, 'all' matched every
+        // parent's "all children" chores in the whole database.
+        // NOTE: This query needs a composite index on parentId + assignedTo.
+        // Firestore will log a link to create it the first time this runs.
         const choresQuery = query(
           collection(db, 'chores'),
+          where('parentId', '==', child.parentId),
           where('assignedTo', 'in', ['all', child.id])
         );
         const choresSnap = await getDocs(choresQuery);
@@ -140,21 +155,8 @@ export default function ChildDashboard() {
     return unsubscribe;
   }, [childData?.id]);
 
-  // Text-to-speech: read the AI photo check result aloud as soon as it comes back
-  useEffect(() => {
-    if (!aiResult) return;
-
-    const message = aiResult.isComplete
-      ? `Great job! ${aiResult.description}`
-      : `Not quite! ${aiResult.description} Please redo the chore and try again.`;
-
-    Speech.stop();
-    Speech.speak(message, { language: 'en-US', rate: 0.85, pitch: 1.1 });
-
-    return () => {
-      Speech.stop();
-    };
-  }, [aiResult]);
+  // NOTE: Auto-speak useEffect was removed.
+  // The child now taps the TextToSpeech button to hear the AI feedback.
 
   const completedCount = chores.filter(c => c.completed).length;
   const progress = chores.length > 0 ? completedCount / chores.length : 0;
@@ -260,10 +262,11 @@ export default function ChildDashboard() {
 
       // Step 7 — Notify parent
       try {
-        const { getDoc, doc: firestoreDoc } = await import('firebase/firestore');
-        const parentDoc = await getDoc(firestoreDoc(db, 'users', childData.parentId));
+        // Child sessions aren't signed in to Firebase Auth, so reading the parent's
+        // `users` doc is denied by security rules. Use the parent's push token that the
+        // parent app copies onto each child doc (`parentPushToken`) instead.
         await sendPushNotification(
-          parentDoc.exists() ? parentDoc.data().pushToken || null : null,
+          childData.parentPushToken || null,
           '📸 Chore Submitted!',
           `${childData.name} submitted "${selectedChore.title}" for approval!`,
           { type: 'chore_submitted', choreId: selectedChore.id }
@@ -526,8 +529,15 @@ export default function ChildDashboard() {
                       {aiResult.isComplete ? '🤖✅' : '🤖❌'}
                     </Text>
                     <Text style={styles.aiFeedbackText}>{aiResult.description}</Text>
-                    {/* Text-to-speech: replay the AI result */}
-                    <TextToSpeech text={aiResult.description} size={24} />
+                    {/* Text-to-speech: only plays when the child taps the button */}
+                    <TextToSpeech
+                      text={
+                        aiResult.isComplete
+                          ? `Great job! ${aiResult.description}`
+                          : `Not quite! ${aiResult.description} Please redo the chore and try again.`
+                      }
+                      size={24}
+                    />
                   </View>
                 )}
 
