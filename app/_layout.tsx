@@ -23,16 +23,12 @@ export default function RootLayout() {
 
     const checkSession = async () => {
       if (user) {
-        // Parent is logged in
         router.replace('/parent-dashboard');
       } else {
-        // Check if child session exists
         const childSession = await AsyncStorage.getItem('childSession');
         if (childSession) {
-          // Child is logged in
           router.replace('/child-dashboard');
         } else {
-          // Nobody logged in
           router.replace('/');
         }
       }
@@ -60,37 +56,38 @@ export default function RootLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        animation: 'slide_from_right',     // clean default
-        animationDuration: 260,            // snappier feel
+        animation: 'slide_from_right',
+        animationDuration: 250,
         gestureEnabled: true,
-        fullScreenGestureEnabled: true,    // better iOS swipe back
+        fullScreenGestureEnabled: true,
         contentStyle: { backgroundColor: '#F7F9FA' },
       }}
     >
-      {/* Auth screens */}
+      {/* ========== Auth Screens ========== */}
       <Stack.Screen name="index" />
       <Stack.Screen name="parent-login" />
       <Stack.Screen name="child-login" />
       <Stack.Screen name="sign-up" />
 
-      
-<Stack.Screen
-  name="parent-dashboard"
-  options={{
-    gestureEnabled: false,           
-    headerBackVisible: false,
-  }}
-/>
+      {/* ========== Dashboards (NO swipe back) ========== */}
+      <Stack.Screen
+        name="parent-dashboard"
+        options={{
+          gestureEnabled: false,
+          headerBackVisible: false,
+          animation: 'fade',
+        }}
+      />
+      <Stack.Screen
+        name="child-dashboard"
+        options={{
+          gestureEnabled: false,
+          headerBackVisible: false,
+          animation: 'fade',
+        }}
+      />
 
-<Stack.Screen
-  name="child-dashboard"
-  options={{
-    gestureEnabled: false,           
-    headerBackVisible: false,
-  }}
-/>
-
-      
+      {/* ========== Create Screens (nice bottom slide) ========== */}
       <Stack.Screen
         name="create-chore"
         options={{
@@ -105,17 +102,47 @@ export default function RootLayout() {
           presentation: 'card',
         }}
       />
+      <Stack.Screen
+        name="add-child"
+        options={{
+          animation: 'fade_from_bottom',
+          presentation: 'card',
+        }}
+      />
 
-      {/* Other screens */}
-      <Stack.Screen name="add-child" />
-      <Stack.Screen name="family-code" />
-      <Stack.Screen name="approvals" />
-      <Stack.Screen name="approval-detail" />
-      <Stack.Screen name="child-rewards" />
-      <Stack.Screen name="chore-list" />
-      <Stack.Screen name="rewards-list" />
-      <Stack.Screen name="settings" />
-      <Stack.Screen name="discipline" />
+      {/* ========== Other Screens ========== */}
+      <Stack.Screen
+        name="family-code"
+        options={{ animation: 'fade_from_bottom' }}
+      />
+      <Stack.Screen
+        name="approvals"
+        options={{ animation: 'fade_from_bottom' }}
+      />
+      <Stack.Screen
+        name="approval-detail"
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="child-rewards"
+        options={{ animation: 'fade_from_bottom' }}
+      />
+      <Stack.Screen
+        name="chore-list"
+        options={{ animation: 'fade_from_bottom' }}
+      />
+      <Stack.Screen
+        name="rewards-list"
+        options={{ animation: 'fade_from_bottom' }}
+      />
+      <Stack.Screen
+        name="settings"
+        options={{ animation: 'fade_from_bottom' }}
+      />
+      <Stack.Screen
+        name="discipline"
+        options={{ animation: 'fade_from_bottom' }}
+      />
     </Stack>
   );
 }

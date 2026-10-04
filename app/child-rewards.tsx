@@ -29,9 +29,22 @@ export default function ChildRewardsScreen() {
           setChildData(child);
           setCoinBalance(child.coinBalance || 0);
 
-          // Load rewards available to this child
+          // FIX: Without a parentId we can't tell which family this child belongs to,
+          // and querying with `undefined` would throw. Show no rewards instead of
+          // risking rewards from other families.
+          if (!child.parentId) {
+            console.log('Child session is missing parentId — cannot load rewards.');
+            setRewards([]);
+            return;
+          }
+
+          // FIX: Scope rewards to this child's parent. Previously, 'all' matched every
+          // parent's "all children" rewards in the whole database.
+          // NOTE: This query needs a composite index on parentId + availableTo.
+          // Firestore will log a link to create it the first time this runs.
           const rewardsQuery = query(
             collection(db, 'rewards'),
+            where('parentId', '==', child.parentId),
             where('availableTo', 'in', ['all', child.id])
           );
           const rewardsSnap = await getDocs(rewardsQuery);

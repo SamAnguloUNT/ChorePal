@@ -6,9 +6,10 @@ import {
   getDoc,
   getDocs,
   query,
+  updateDoc,
   where,
 } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   SafeAreaView,
@@ -48,35 +49,59 @@ export default function ParentDashboard() {
     }, [])
   );
 
-  useEffect(() => {
-    const loadData = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+  // Runs every time the dashboard comes into focus (not just on first mount), so a
+  // newly added child shows up in the list AND gets the parent's push token.
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
 
-      const docSnap = await getDoc(doc(db, 'users', user.uid));
-      if (docSnap.exists()) {
-        const parentData = docSnap.data();
-        setParentName(parentData.name || '');
+        let parentPushToken: string | null = null;
 
-        if (parentData.notificationsEnabled) {
-          await registerForPushNotifications(user.uid, 'parent');
+        const docSnap = await getDoc(doc(db, 'users', user.uid));
+        if (docSnap.exists()) {
+          const parentData = docSnap.data();
+          setParentName(parentData.name || '');
+
+          // FIX: This used to require `notificationsEnabled` to be exactly true, so if
+          // the field was missing the parent never registered a token. Notifications are
+          // now on unless the parent explicitly turned them off in Settings.
+          if (parentData.notificationsEnabled !== false) {
+            parentPushToken = await registerForPushNotifications(user.uid, 'parent');
+          }
         }
-      }
 
-      const childrenQuery = query(
-        collection(db, 'children'),
-        where('parentId', '==', user.uid)
-      );
-      const childrenSnap = await getDocs(childrenQuery);
-      const childrenData = childrenSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setChildren(childrenData);
-    };
+        const childrenQuery = query(
+          collection(db, 'children'),
+          where('parentId', '==', user.uid)
+        );
+        const childrenSnap = await getDocs(childrenQuery);
+        const childrenData = childrenSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setChildren(childrenData);
 
-    loadData();
-  }, []);
+        // FIX: Child sessions can't read the parent's `users` doc (security rules), so
+        // copy the parent's push token onto each child doc. The child app reads
+        // `parentPushToken` from its own record when it submits a chore.
+        if (parentPushToken) {
+          try {
+            await Promise.all(
+              childrenSnap.docs
+                .filter((d) => d.data().parentPushToken !== parentPushToken)
+                .map((d) => updateDoc(d.ref, { parentPushToken }))
+            );
+          } catch (error) {
+            console.log('Could not sync parent push token to children:', error);
+          }
+        }
+      };
+
+      loadData();
+    }, [])
+  );
 
   const handleLogout = async () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
