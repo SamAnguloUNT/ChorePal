@@ -3,7 +3,7 @@
 **Version:** 2.1  
 **Team Name:** Team 2  
 **Team Lead:** Samuel Angulo  
-**Members:** Richard Brooks, Adam Jabbar, Isaac Lindsay, Doreen Lobe  
+**Members:** Cole Brooks, Adam Jabbar, Isaac Lindsay, Doreen Lobe  
 **Sponsor:** Diana Rabah  
 **Date:** 10/06/2026  
 
@@ -20,7 +20,7 @@
 ---
 
 ## 1. Introduction
-<!-- OWNER: Samuel Angulo (Team Lead) -->
+<!-- OWNER: Cole Brooks -->
 <!-- STATUS: Needs review / final polish -->
 
 ChorePal is a family-focused mobile application that turns everyday household chores into a fun, rewarding experience. Parents create and assign chores, set coin values, and approve completed work using photo verification. Children complete tasks, upload photos for review, earn coins, and redeem them for rewards. The app helps families build responsibility, track progress, and keep everyone motivated with clear goals and positive feedback.
@@ -28,7 +28,7 @@ ChorePal is a family-focused mobile application that turns everyday household ch
 ---
 
 ## 2. System Requirements
-<!-- OWNER: Doreen Lobe -->
+<!-- OWNER: Samuel Angulo -->
 <!-- STATUS: Please expand or adjust based on final tech stack (web vs native, exact browser support, etc.) -->
 
 - **Hardware:**  
@@ -48,7 +48,7 @@ ChorePal is a family-focused mobile application that turns everyday household ch
 ---
 
 ## 3. Installation Guide
-<!-- OWNER: Doreen Lobe -->
+<!-- OWNER: Adam Jabbar -->
 <!-- STATUS: Update with the real live URL once the app is deployed -->
 
 ChorePal is a web-based application. **No installation is required.**
@@ -62,7 +62,7 @@ If a native app version is available for your course, download it from the link 
 ---
 
 ## 4. Getting Started
-<!-- OWNER: Richard Brooks -->
+<!-- OWNER: Samuel Angulo -->
 <!-- STATUS: Please review steps and screenshots for accuracy. Add any missing first-time tips. -->
 
 ### Step 1 – Open the app
@@ -102,7 +102,7 @@ Use your email and password on the Parent Login screen.
 ## 5. Features & Functions
 
 ### Feature 1: Parent Dashboard & Family Management
-<!-- OWNER: Adam Jabbar -->
+<!-- OWNER: Sam Angulo -->
 <!-- STATUS: Expand with more detail if needed. Confirm all buttons and navigation match the current prototype. -->
 
 The Parent Dashboard is the central hub. Here you can see all kids, add new children, and quickly jump to Chores, Rewards, Approvals, or Settings.
@@ -120,7 +120,7 @@ The Parent Dashboard is the central hub. Here you can see all kids, add new chil
 ---
 
 ### Feature 2: Creating & Managing Chores
-<!-- OWNER: Adam Jabbar -->
+<!-- OWNER: Isaac Lindsay -->
 <!-- STATUS: Please verify the exact fields on the Create/Edit Chore screens and update steps if anything has changed. -->
 
 Parents can create chores, assign them to specific children, set coin values, due dates, and mark them as recurring.
@@ -142,7 +142,7 @@ Parents can create chores, assign them to specific children, set coin values, du
 ---
 
 ### Feature 3: Child Dashboard & Photo Verification
-<!-- OWNER: Isaac Lindsay -->
+<!-- OWNER: Cole Brooks -->
 <!-- STATUS: This is a key section. Please make sure the photo upload + feedback flow is accurate and clear for non-technical users. -->
 
 Children see their personal progress, list of chores, and can submit photo proof for parent approval. After submission they also receive ChorePal Verification Feedback.
@@ -164,7 +164,7 @@ Children see their personal progress, list of chores, and can submit photo proof
 ---
 
 ### Feature 4: Approvals
-<!-- OWNER: Isaac Lindsay -->
+<!-- OWNER: Doreen Lobe -->
 <!-- STATUS: Confirm the approval/reject flow and any notes a parent can leave. -->
 
 Parents review every photo submission and decide whether to approve (award coins) or request a re-do.
@@ -181,7 +181,7 @@ Parents review every photo submission and decide whether to approve (award coins
 ---
 
 ### Feature 5: Rewards
-<!-- OWNER: Adam Jabbar (Parent side) + Isaac Lindsay (Child side) -->
+<!-- OWNER: Adam Jabbar -->
 <!-- STATUS: Coordinate so the parent creation steps and child redemption steps match. -->
 
 Parents create rewards that children can buy with the coins they earn. Children browse and redeem rewards from their own Rewards page.
@@ -205,7 +205,7 @@ Parents create rewards that children can buy with the coins they earn. Children 
 ---
 
 ## 6. Troubleshooting
-<!-- OWNER: Richard Brooks -->
+<!-- OWNER: Cole Brooks -->
 <!-- STATUS: Add any real issues the team has already encountered during testing. Aim for at least 4–5 common problems. -->
 
 | Problem | Possible Cause | Solution |
@@ -219,7 +219,7 @@ Parents create rewards that children can buy with the coins they earn. Children 
 ---
 
 ## 7. Contact Information
-<!-- OWNER: Samuel Angulo (Team Lead) -->
+<!-- OWNER: Doreen Lobe -->
 <!-- STATUS: Replace placeholders with real team email, GitHub link, etc. -->
 
 - **Support Email:** chorepal.team2@example.com (replace with your actual team support email)  
@@ -232,7 +232,7 @@ When requesting help, please include your device type, browser, and a short desc
 ---
 
 ## 8. FAQ (Extra Credit)
-<!-- OWNER: Richard Brooks + Isaac Lindsay -->
+<!-- OWNER: Isaac Lindsay -->
 <!-- STATUS: Feel free to add more questions based on what users actually ask during testing. -->
 
 **Q: Can one parent account manage multiple children?**  
