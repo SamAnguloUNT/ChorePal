@@ -58,17 +58,22 @@ export default function ParentDashboard() {
         if (!user) return;
 
         let parentPushToken: string | null = null;
+        let homeLocation: any = null;
+        let notificationsOff = false;
 
         const docSnap = await getDoc(doc(db, 'users', user.uid));
         if (docSnap.exists()) {
           const parentData = docSnap.data();
           setParentName(parentData.name || '');
+          homeLocation = parentData.homeLocation || null;
 
           // FIX: This used to require `notificationsEnabled` to be exactly true, so if
           // the field was missing the parent never registered a token. Notifications are
           // now on unless the parent explicitly turned them off in Settings.
           if (parentData.notificationsEnabled !== false) {
             parentPushToken = await registerForPushNotifications(user.uid, 'parent');
+          } else {
+            notificationsOff = true;
           }
         }
 
@@ -86,15 +91,43 @@ export default function ParentDashboard() {
         // FIX: Child sessions can't read the parent's `users` doc (security rules), so
         // copy the parent's push token onto each child doc. The child app reads
         // `parentPushToken` from its own record when it submits a chore.
-        if (parentPushToken) {
+        // Also copy the saved home location onto each child doc, so a child added later
+        // gets home reminders without the parent re-saving the location.
+        if (parentPushToken || homeLocation || notificationsOff) {
           try {
             await Promise.all(
-              childrenSnap.docs
-                .filter((d) => d.data().parentPushToken !== parentPushToken)
-                .map((d) => updateDoc(d.ref, { parentPushToken }))
+              childrenSnap.docs.map((d) => {
+                const data = d.data();
+                const updates: any = {};
+
+                if (parentPushToken && data.parentPushToken !== parentPushToken) {
+                  updates.parentPushToken = parentPushToken;
+                }
+
+                // Notifications are switched off: remove any leftover token copy so the
+                // child app can't notify this parent (covers tokens saved before the
+                // switch was turned off).
+                if (notificationsOff && data.parentPushToken) {
+                  updates.parentPushToken = null;
+                }
+
+                const h = data.homeLocation;
+                const homeDiffers =
+                  !h ||
+                  h.latitude !== homeLocation?.latitude ||
+                  h.longitude !== homeLocation?.longitude ||
+                  h.radius !== homeLocation?.radius;
+                if (homeLocation && homeDiffers) {
+                  updates.homeLocation = homeLocation;
+                }
+
+                return Object.keys(updates).length > 0
+                  ? updateDoc(d.ref, updates)
+                  : null;
+              })
             );
           } catch (error) {
-            console.log('Could not sync parent push token to children:', error);
+            console.log('Could not sync push token / home location to children:', error);
           }
         }
       };
