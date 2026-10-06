@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, doc, getDoc, getDocs, increment, query, updateDoc, where } from 'firebase/firestore';
+import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-import { auth, db } from '../config/firebase';
+import { db } from '../config/firebase';
 import { sendPushNotification } from '../utils/notifications';
 
 export default function ApprovalDetailScreen() {
@@ -54,13 +54,16 @@ export default function ApprovalDetailScreen() {
     loadSubmission();
   }, [id]);
 
-  const findChildDoc = async () => {
-    const childQuery = query(
-      collection(db, 'children'),
-      where('parentId', '==', auth.currentUser?.uid)
-    );
-    const childSnap = await getDocs(childQuery);
-    return childSnap.docs.find(d => d.data().name === childName);
+  // FIX: Look the child up by the childId saved on the submission instead of matching on
+  // the child's name. Matching by name could pick the wrong child (two kids with the same
+  // name) and give them the coins and the notification.
+  const getChildDoc = async () => {
+    const submissionSnap = await getDoc(doc(db, 'submissions', id as string));
+    const childId = submissionSnap.exists() ? submissionSnap.data().childId : null;
+    if (!childId) return null;
+
+    const childSnap = await getDoc(doc(db, 'children', childId));
+    return childSnap.exists() ? childSnap : null;
   };
 
   const handleApprove = () => {
@@ -75,6 +78,14 @@ export default function ApprovalDetailScreen() {
             try {
               setLoading(true);
 
+              // Find the child first. If we can't, stop BEFORE marking the submission
+              // approved, so a chore is never approved without the coins being awarded.
+              const childDoc = await getChildDoc();
+              if (!childDoc) {
+                Alert.alert('Error!', 'Could not find this child\'s account. Nothing was changed.');
+                return;
+              }
+
               // Update submission status
               await updateDoc(doc(db, 'submissions', id as string), {
                 status: 'approved',
@@ -82,26 +93,21 @@ export default function ApprovalDetailScreen() {
                 approvedAt: new Date(),
               });
 
-              // Find child and add coins
-              const childDoc = await findChildDoc();
-              if (childDoc) {
-                await updateDoc(doc(db, 'children', childDoc.id), {
-                  coinBalance: increment(parseInt(choreCoins as string)),
-                });
+              // Add coins
+              await updateDoc(doc(db, 'children', childDoc.id), {
+                coinBalance: increment(parseInt(choreCoins as string)),
+              });
 
-                // Notify child
-                try {
-                  if (childDoc.data().pushToken) {
-                    await sendPushNotification(
-                      childDoc.data().pushToken,
-                      '🎉 Chore Approved!',
-                      `Your parent approved "${choreTitle}"! You earned ${choreCoins} coins!`,
-                      { type: 'chore_approved' }
-                    );
-                  }
-                } catch (notifError) {
-                  console.log('Notification error:', notifError);
-                }
+              // Notify child (logs "No push token for recipient" if the child has none)
+              try {
+                await sendPushNotification(
+                  childDoc.data()?.pushToken || null,
+                  '🎉 Chore Approved!',
+                  `Your parent approved "${choreTitle}"! You earned ${choreCoins} coins!`,
+                  { type: 'chore_approved' }
+                );
+              } catch (notifError) {
+                console.log('Notification error:', notifError);
               }
 
               Alert.alert('Approved! 🎉', `${childName} earned ${choreCoins} coins!`, [
@@ -137,17 +143,15 @@ export default function ApprovalDetailScreen() {
                 rejectedAt: new Date(),
               });
 
-              // Notify child
+              // Notify child (logs "No push token for recipient" if the child has none)
               try {
-                const childDoc = await findChildDoc();
-                if (childDoc && childDoc.data().pushToken) {
-                  await sendPushNotification(
-                    childDoc.data().pushToken,
-                    '❌ Chore Rejected',
-                    `Your parent rejected "${choreTitle}". Please redo the chore and resubmit!`,
-                    { type: 'chore_rejected' }
-                  );
-                }
+                const childDoc = await getChildDoc();
+                await sendPushNotification(
+                  childDoc?.data()?.pushToken || null,
+                  '❌ Chore Rejected',
+                  `Your parent rejected "${choreTitle}". Please redo the chore and resubmit!`,
+                  { type: 'chore_rejected' }
+                );
               } catch (notifError) {
                 console.log('Notification error:', notifError);
               }

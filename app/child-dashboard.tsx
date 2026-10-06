@@ -18,6 +18,7 @@ import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
 import { registerForPushNotifications, sendPushNotification } from '../utils/notifications';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
+import { useHomeGeofence } from '../utils/useHomeGeofence';
 import { analyzeImage } from '../utils/visionApi';
 
 export default function ChildDashboard() {
@@ -160,6 +161,14 @@ export default function ChildDashboard() {
 
   const completedCount = chores.filter(c => c.completed).length;
   const progress = chores.length > 0 ? completedCount / chores.length : 0;
+
+  // Home reminders: "Welcome home, you have N chores" on arrival, and
+  // "Don't forget your chores" on leaving. Foreground-only (works in Expo Go).
+  // `homeLocation` is copied onto the child doc by the parent app.
+  useHomeGeofence(
+    childData?.homeLocation,
+    chores.filter(c => !c.completed).length
+  );
 
   const handleLogout = async () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
