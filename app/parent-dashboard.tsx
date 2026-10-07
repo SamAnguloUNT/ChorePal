@@ -82,10 +82,12 @@ export default function ParentDashboard() {
           where('parentId', '==', user.uid)
         );
         const childrenSnap = await getDocs(childrenQuery);
-        const childrenData = childrenSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const childrenData = childrenSnap.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }))
+          .filter((child: any) => child.isDeleted !== true);
         setChildren(childrenData);
 
         // FIX: Child sessions can't read the parent's `users` doc (security rules), so
@@ -183,7 +185,16 @@ export default function ParentDashboard() {
             <Text style={styles.noKidsText}>No kids added yet!</Text>
           ) : (
             children.map((child) => (
-              <TouchableOpacity key={child.id} style={styles.kidCard}>
+              <TouchableOpacity
+                key={child.id}
+                style={styles.kidCard}
+                onPress={() =>
+                  router.push({
+                    pathname: '/child-details',
+                    params: { childId: child.id },
+                  })
+                }
+              >
                 <View style={styles.kidAvatar}>
                   <Text style={styles.kidAvatarEmoji}>{child.avatar}</Text>
                 </View>
