@@ -88,7 +88,6 @@ export default function ParentDashboard() {
             ...doc.data(),
           }))
           .filter((child: any) => child.isDeleted !== true);
-
         setChildren(childrenData);
 
         // FIX: Child sessions can't read the parent's `users` doc (security rules), so

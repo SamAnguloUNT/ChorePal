@@ -331,7 +331,6 @@ export default function ChildDetailsScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" />
-
           <Text style={styles.loadingText}>
             Loading child account...
           </Text>
@@ -348,11 +347,7 @@ export default function ChildDetailsScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : 'height'
-        }
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
           <TouchableOpacity
@@ -361,14 +356,10 @@ export default function ChildDetailsScreen() {
               router.back();
             }}
           >
-            <Text style={styles.backText}>
-              ← Back
-            </Text>
+            <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
 
-          <Text style={styles.headerTitle}>
-            Child Account
-          </Text>
+          <Text style={styles.headerTitle}>Child Account</Text>
 
           <View style={{ width: 44 }} />
         </View>
@@ -379,9 +370,7 @@ export default function ChildDetailsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={
-            Platform.OS === 'ios'
-              ? 'interactive'
-              : 'on-drag'
+            Platform.OS === 'ios' ? 'interactive' : 'on-drag'
           }
         >
           <View style={styles.profileCard}>
@@ -418,10 +407,7 @@ export default function ChildDetailsScreen() {
                 )}
               </View>
 
-              <Text
-                style={styles.codeText}
-                selectable
-              >
+              <Text style={styles.codeText} selectable>
                 {child.code || 'Not available'}
               </Text>
             </View>
@@ -429,10 +415,7 @@ export default function ChildDetailsScreen() {
             <View style={styles.divider} />
 
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>
-                Age
-              </Text>
-
+              <Text style={styles.infoLabel}>Age</Text>
               <Text style={styles.infoValue}>
                 {child.age ?? 'Not set'}
               </Text>
@@ -441,10 +424,7 @@ export default function ChildDetailsScreen() {
             <View style={styles.divider} />
 
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>
-                Coins
-              </Text>
-
+              <Text style={styles.infoLabel}>Coins</Text>
               <Text style={styles.infoValue}>
                 {child.coinBalance ?? 0} 🪙
               </Text>
@@ -457,24 +437,17 @@ export default function ChildDetailsScreen() {
 
           {chores.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyEmoji}>
-                📋
-              </Text>
-
+              <Text style={styles.emptyEmoji}>📋</Text>
               <Text style={styles.emptyTitle}>
                 No chores assigned
               </Text>
-
               <Text style={styles.emptyText}>
                 This child does not have any chores yet.
               </Text>
             </View>
           ) : (
             chores.map((chore) => (
-              <View
-                key={chore.id}
-                style={styles.choreCard}
-              >
+              <View key={chore.id} style={styles.choreCard}>
                 <View style={styles.choreTopRow}>
                   <Text style={styles.choreTitle}>
                     {chore.title || 'Untitled Chore'}
@@ -516,9 +489,7 @@ export default function ChildDetailsScreen() {
             </TouchableOpacity>
           ) : (
             <View style={styles.editCard}>
-              <Text style={styles.inputLabel}>
-                Name
-              </Text>
+              <Text style={styles.inputLabel}>Name</Text>
 
               <TextInput
                 style={styles.input}
@@ -535,10 +506,7 @@ export default function ChildDetailsScreen() {
               </Text>
 
               <TextInput
-                style={[
-                  styles.input,
-                  styles.avatarInput,
-                ]}
+                style={[styles.input, styles.avatarInput]}
                 value={avatar}
                 onChangeText={handleAvatarChange}
                 placeholder="🙂"
@@ -547,9 +515,7 @@ export default function ChildDetailsScreen() {
                 onSubmitEditing={Keyboard.dismiss}
               />
 
-              <Text style={styles.inputLabel}>
-                Age
-              </Text>
+              <Text style={styles.inputLabel}>Age</Text>
 
               <TextInput
                 style={styles.input}
@@ -585,13 +551,11 @@ export default function ChildDetailsScreen() {
 
                     setName(child.name || '');
                     setAvatar(child.avatar || '');
-
                     setAge(
                       child.age != null
                         ? String(child.age)
                         : ''
                     );
-
                     setPin(
                       child.pin != null
                         ? String(child.pin)
@@ -612,9 +576,7 @@ export default function ChildDetailsScreen() {
                   disabled={saving}
                 >
                   <Text style={styles.saveButtonText}>
-                    {saving
-                      ? 'Saving...'
-                      : 'Save'}
+                    {saving ? 'Saving...' : 'Save'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -636,18 +598,9 @@ export default function ChildDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F4F7F8',
-  },
-
-  keyboardView: {
-    flex: 1,
-  },
-
-  scrollView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: '#F4F7F8' },
+  keyboardView: { flex: 1 },
+  scrollView: { flex: 1 },
 
   header: {
     flexDirection: 'row',
@@ -660,17 +613,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E2E8F0',
   },
 
-  backText: {
-    fontSize: 16,
-    color: '#0D9488',
-    fontWeight: '700',
-  },
-
-  headerTitle: {
-    fontSize: 20,
-    color: '#134E4A',
-    fontWeight: '800',
-  },
+  backText: { fontSize: 16, color: '#0D9488', fontWeight: '700' },
+  headerTitle: { fontSize: 20, color: '#134E4A', fontWeight: '800' },
 
   scroll: {
     padding: 20,
@@ -685,10 +629,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  loadingText: {
-    color: '#64748B',
-    fontSize: 14,
-  },
+  loadingText: { color: '#64748B', fontSize: 14 },
 
   profileCard: {
     backgroundColor: '#E8F8F7',
@@ -708,15 +649,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  avatarText: {
-    fontSize: 42,
-  },
-
-  childName: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#134E4A',
-  },
+  avatarText: { fontSize: 42 },
+  childName: { fontSize: 24, fontWeight: '800', color: '#134E4A' },
 
   childLabel: {
     marginTop: 5,
@@ -751,27 +685,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  infoLeft: {
-    flex: 1,
-  },
-
-  infoLabel: {
-    color: '#64748B',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  infoValue: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  copyHint: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 3,
-  },
+  infoLeft: { flex: 1 },
+  infoLabel: { color: '#64748B', fontSize: 14, fontWeight: '600' },
+  infoValue: { color: '#0F172A', fontSize: 15, fontWeight: '700' },
+  copyHint: { fontSize: 11, color: '#94A3B8', marginTop: 3 },
 
   codeText: {
     color: '#0D9488',
@@ -780,10 +697,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  divider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-  },
+  divider: { height: 1, backgroundColor: '#F1F5F9' },
 
   emptyCard: {
     backgroundColor: '#FFFFFF',
@@ -793,16 +707,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  emptyEmoji: {
-    fontSize: 30,
-    marginBottom: 8,
-  },
-
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
+  emptyEmoji: { fontSize: 30, marginBottom: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
 
   emptyText: {
     fontSize: 13,
@@ -833,11 +739,7 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
 
-  coinText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#0D9488',
-  },
+  coinText: { fontSize: 13, fontWeight: '800', color: '#0D9488' },
 
   choreDescription: {
     fontSize: 13,
@@ -846,11 +748,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  choreDeadline: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 8,
-  },
+  choreDeadline: { fontSize: 12, color: '#94A3B8', marginTop: 8 },
 
   editButton: {
     backgroundColor: '#4ECDC4',
@@ -917,10 +815,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
 
-  cancelButtonText: {
-    color: '#475569',
-    fontWeight: '700',
-  },
+  cancelButtonText: { color: '#475569', fontWeight: '700' },
 
   saveButton: {
     flex: 1,
@@ -930,10 +825,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0D9488',
   },
 
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-  },
+  saveButtonText: { color: '#FFFFFF', fontWeight: '800' },
 
   deleteButton: {
     backgroundColor: '#FFFFFF',

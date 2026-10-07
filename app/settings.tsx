@@ -275,70 +275,46 @@ export default function SettingsScreen() {
 
     Alert.alert(
       'Delete Account',
-      'This will permanently delete your ChorePal parent account. This action cannot be undone.',
+      'Are you sure you want to permanently delete your ChorePal account? This action cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Account',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Are you sure?',
-              'Your account will be permanently deleted.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Delete Account',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      const uid = user.uid;
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'users', user.uid));
+              await deleteUser(user);
 
-                      // Delete child accounts connected to this parent.
-                      const childrenSnapshot = await getDocs(
-                        query(collection(db, 'children'), where('parentId', '==', uid))
-                      );
-
-                      await Promise.all(
-                        childrenSnapshot.docs.map((childDoc) => deleteDoc(childDoc.ref))
-                      );
-
-                      // Delete the parent's Firestore profile.
-                      await deleteDoc(doc(db, 'users', uid));
-
-                      // Delete the Firebase Authentication account last.
-                      await deleteUser(user);
-
-                      Alert.alert(
-                        'Account Deleted',
-                        'Your ChorePal account has been permanently deleted.',
-                        [
-                          {
-                            text: 'OK',
-                            onPress: () => router.replace('/'),
-                          },
-                        ]
-                      );
-                    } catch (error: any) {
-                      console.error('Delete account error:', error);
-
-                      if (error?.code === 'auth/requires-recent-login') {
-                        Alert.alert(
-                          'Please Sign In Again',
-                          'For security, Firebase requires you to sign in again before deleting your account. Log out, sign back in, and then try Delete Account again.'
-                        );
-                        return;
-                      }
-
-                      Alert.alert(
-                        'Error',
-                        'Unable to delete your account. Please try again.'
-                      );
-                    }
+              Alert.alert(
+                'Account Deleted',
+                'Your ChorePal account has been permanently deleted.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => router.replace('/'),
                   },
-                },
-              ]
-            );
+                ]
+              );
+            } catch (error: any) {
+              console.error('Delete account error:', error);
+
+              if (error?.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Sign In Again',
+                  'For security, please log out, sign back in, and try deleting your account again.'
+                );
+                return;
+              }
+
+              Alert.alert(
+                'Error',
+                'Unable to delete your account. Please try again.'
+              );
+            }
           },
         },
       ]
