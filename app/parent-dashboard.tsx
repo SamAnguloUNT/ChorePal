@@ -1,4 +1,3 @@
-
 import { useFocusEffect, useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import {
@@ -7,9 +6,10 @@ import {
   getDoc,
   getDocs,
   query,
+  updateDoc,
   where,
 } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   SafeAreaView,
@@ -33,22 +33,15 @@ export default function ParentDashboard() {
     useCallback(() => {
       const refreshParentName = async () => {
         const user = auth.currentUser;
-
         if (!user) return;
 
         try {
-          const docSnap = await getDoc(
-            doc(db, 'users', user.uid)
-          );
-
+          const docSnap = await getDoc(doc(db, 'users', user.uid));
           if (docSnap.exists()) {
             setParentName(docSnap.data().name || '');
           }
         } catch (error) {
-          console.error(
-            'Error refreshing parent name:',
-            error
-          );
+          console.error('Error refreshing parent name:', error);
         }
       };
 
@@ -56,74 +49,108 @@ export default function ParentDashboard() {
     }, [])
   );
 
-  useEffect(() => {
-    const loadData = async () => {
-      const user = auth.currentUser;
+  // Runs every time the dashboard comes into focus (not just on first mount), so a
+  // newly added child shows up in the list AND gets the parent's push token.
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
 
-      if (user) {
-        // Load parent data
-        const docSnap = await getDoc(
-          doc(db, 'users', user.uid)
-        );
+        let parentPushToken: string | null = null;
+        let homeLocation: any = null;
+        let notificationsOff = false;
 
+        const docSnap = await getDoc(doc(db, 'users', user.uid));
         if (docSnap.exists()) {
           const parentData = docSnap.data();
-
           setParentName(parentData.name || '');
+          homeLocation = parentData.homeLocation || null;
 
-          // Register this device only if the parent
-          // enabled notifications
-          if (parentData.notificationsEnabled) {
-            await registerForPushNotifications(
-              user.uid,
-              'parent'
-            );
+          // FIX: This used to require `notificationsEnabled` to be exactly true, so if
+          // the field was missing the parent never registered a token. Notifications are
+          // now on unless the parent explicitly turned them off in Settings.
+          if (parentData.notificationsEnabled !== false) {
+            parentPushToken = await registerForPushNotifications(user.uid, 'parent');
+          } else {
+            notificationsOff = true;
           }
         }
 
-        // Load children
         const childrenQuery = query(
           collection(db, 'children'),
           where('parentId', '==', user.uid)
         );
-
-        const childrenSnap = await getDocs(
-          childrenQuery
-        );
-
-        const childrenData = childrenSnap.docs.map(
-          doc => ({
+        const childrenSnap = await getDocs(childrenQuery);
+        const childrenData = childrenSnap.docs
+          .map((doc) => ({
             id: doc.id,
             ...doc.data(),
-          })
-        );
+          }))
+          .filter((child: any) => child.isDeleted !== true);
 
         setChildren(childrenData);
-      }
-    };
 
-    loadData();
-  }, []);
+        // FIX: Child sessions can't read the parent's `users` doc (security rules), so
+        // copy the parent's push token onto each child doc. The child app reads
+        // `parentPushToken` from its own record when it submits a chore.
+        // Also copy the saved home location onto each child doc, so a child added later
+        // gets home reminders without the parent re-saving the location.
+        if (parentPushToken || homeLocation || notificationsOff) {
+          try {
+            await Promise.all(
+              childrenSnap.docs.map((d) => {
+                const data = d.data();
+                const updates: any = {};
+
+                if (parentPushToken && data.parentPushToken !== parentPushToken) {
+                  updates.parentPushToken = parentPushToken;
+                }
+
+                // Notifications are switched off: remove any leftover token copy so the
+                // child app can't notify this parent (covers tokens saved before the
+                // switch was turned off).
+                if (notificationsOff && data.parentPushToken) {
+                  updates.parentPushToken = null;
+                }
+
+                const h = data.homeLocation;
+                const homeDiffers =
+                  !h ||
+                  h.latitude !== homeLocation?.latitude ||
+                  h.longitude !== homeLocation?.longitude ||
+                  h.radius !== homeLocation?.radius;
+                if (homeLocation && homeDiffers) {
+                  updates.homeLocation = homeLocation;
+                }
+
+                return Object.keys(updates).length > 0
+                  ? updateDoc(d.ref, updates)
+                  : null;
+              })
+            );
+          } catch (error) {
+            console.log('Could not sync push token / home location to children:', error);
+          }
+        }
+      };
+
+      loadData();
+    }, [])
+  );
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut(auth);
+          router.replace('/');
         },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut(auth);
-            router.replace('/');
-          },
-        },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
@@ -132,35 +159,22 @@ export default function ParentDashboard() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>
-              Welcome back! 👋
-            </Text>
-
-            <Text style={styles.name}>
-              {parentName || 'Loading...'}
-            </Text>
+            <Text style={styles.greeting}>Welcome back 👋</Text>
+            <Text style={styles.name}>{parentName || 'Loading...'}</Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.avatarCircle}
-            onPress={handleLogout}
-          >
+          <TouchableOpacity style={styles.avatarCircle} onPress={handleLogout}>
             <Text style={styles.avatarText}>
-              {parentName
-                ? parentName.charAt(0).toUpperCase()
-                : '?'}
+              {parentName ? parentName.charAt(0).toUpperCase() : '?'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Kids Section */}
-        <Text style={styles.sectionTitle}>
-          Kids Accounts
-        </Text>
+        {/* Kids Accounts */}
+        <Text style={styles.sectionTitle}>Kids Accounts</Text>
 
         <ScrollView
           horizontal
@@ -169,34 +183,29 @@ export default function ParentDashboard() {
           contentContainerStyle={styles.kidsRowContent}
         >
           {children.length === 0 ? (
-            <Text style={styles.noKidsText}>
-              No kids added yet!
-            </Text>
+            <Text style={styles.noKidsText}>No kids added yet!</Text>
           ) : (
             children.map((child) => (
               <TouchableOpacity
                 key={child.id}
                 style={styles.kidCard}
+                onPress={() =>
+                  router.push({
+                    pathname: '/child-details',
+                    params: { childId: child.id },
+                  })
+                }
               >
                 <View style={styles.kidAvatar}>
-                  <Text style={styles.kidAvatarEmoji}>
-                    {child.avatar}
-                  </Text>
+                  <Text style={styles.kidAvatarEmoji}>{child.avatar}</Text>
                 </View>
-
-                <Text style={styles.kidName}>
+                <Text style={styles.kidName} numberOfLines={1}>
                   {child.name}
                 </Text>
-
                 <View style={styles.childBadge}>
-                  <Text style={styles.childBadgeText}>
-                    CHILD
-                  </Text>
+                  <Text style={styles.childBadgeText}>CHILD</Text>
                 </View>
-
-                <Text style={styles.kidCode}>
-                  {child.code}
-                </Text>
+                <Text style={styles.kidCode}>{child.code}</Text>
               </TouchableOpacity>
             ))
           )}
@@ -207,462 +216,335 @@ export default function ParentDashboard() {
             onPress={() => router.push('/add-child')}
           >
             <View style={styles.addKidCircle}>
-              <Text style={styles.addKidPlus}>
-                +
-              </Text>
+              <Text style={styles.addKidPlus}>+</Text>
             </View>
-
-            <Text style={styles.addKidText}>
-              Add Kid
-            </Text>
+            <Text style={styles.addKidText}>Add Kid</Text>
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Parent Accounts */}
-        <Text style={styles.sectionTitle}>
-          Parent Accounts
-        </Text>
-
-        <View style={styles.parentCard}>
-          <View style={styles.parentInfo}>
-            <View style={styles.parentInitial}>
-              <Text style={styles.parentInitialText}>
-                {parentName
-                  ? parentName.charAt(0).toUpperCase()
-                  : '?'}
-              </Text>
-            </View>
-
-            <View>
-              <Text style={styles.parentName}>
-                {parentName || 'Loading...'}
-              </Text>
-
-              <Text style={styles.parentRole}>
-                PARENT
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.parentArrow}>
-            ›
-          </Text>
-        </View>
-
         {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>
-          Quick Actions
-        </Text>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
 
         <View style={styles.actionsGrid}>
-
-          {/* Chores */}
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => router.push('/chore-list')}
+            onPress={() => router.push('/create-chore')}
           >
-            <Text style={styles.actionEmoji}>
-              📋
-            </Text>
-
-            <Text style={styles.actionText}>
-              Chores
-            </Text>
+            <View style={[styles.actionIcon, { backgroundColor: '#E0F7F5' }]}>
+              <Text style={styles.actionEmoji}>📝</Text>
+            </View>
+            <Text style={styles.actionText}>Create Chore</Text>
           </TouchableOpacity>
 
-          {/* Rewards */}
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => router.push('/rewards-list')}
+            onPress={() => router.push('/create-reward')}
           >
-            <Text style={styles.actionEmoji}>
-              ⭐
-            </Text>
-
-            <Text style={styles.actionText}>
-              Rewards
-            </Text>
+            <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
+              <Text style={styles.actionEmoji}>🎁</Text>
+            </View>
+            <Text style={styles.actionText}>Create Reward</Text>
           </TouchableOpacity>
 
-          {/* Approvals */}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => router.push('/approvals')}
           >
-            <Text style={styles.actionEmoji}>
-              ✅
-            </Text>
-
-            <Text style={styles.actionText}>
-              Approvals
-            </Text>
+            <View style={[styles.actionIcon, { backgroundColor: '#D1FAE5' }]}>
+              <Text style={styles.actionEmoji}>✅</Text>
+            </View>
+            <Text style={styles.actionText}>Approvals</Text>
           </TouchableOpacity>
 
-          {/* Discipline System */}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => router.push('/discipline')}
           >
-            <Text style={styles.actionEmoji}>
-              ⚖️
-            </Text>
-
-            <Text style={styles.actionText}>
-              Discipline
-            </Text>
+            <View style={[styles.actionIcon, { backgroundColor: '#FEE2E2' }]}>
+              <Text style={styles.actionEmoji}>⚖️</Text>
+            </View>
+            <Text style={styles.actionText}>Discipline</Text>
           </TouchableOpacity>
-
-          {/* Settings */}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => router.push('/settings')}
-          >
-            <Text style={styles.actionEmoji}>
-              ⚙️
-            </Text>
-
-            <Text style={styles.actionText}>
-              Settings
-            </Text>
-          </TouchableOpacity>
-
         </View>
-
       </ScrollView>
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
-
         <TouchableOpacity
           style={styles.navItem}
           onPress={() => router.push('/chore-list')}
         >
-          <Text style={styles.navEmoji}>
-            📋
-          </Text>
-
-          <Text style={styles.navText}>
-            Chores
-          </Text>
+          <Text style={styles.navEmoji}>📋</Text>
+          <Text style={styles.navText}>Chores</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.navItem, styles.navActive]}
-        >
-          <Text style={styles.navEmoji}>
-            👨‍👩‍👧
-          </Text>
-
-          <Text
-            style={[
-              styles.navText,
-              styles.navTextActive,
-            ]}
-          >
-            Kids
-          </Text>
+        <TouchableOpacity style={[styles.navItem, styles.navActive]}>
+          <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
+          <Text style={[styles.navText, styles.navTextActive]}>Kids</Text>
+          <View style={styles.activeIndicator} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navItem}
           onPress={() => router.push('/rewards-list')}
         >
-          <Text style={styles.navEmoji}>
-            ⭐
-          </Text>
-
-          <Text style={styles.navText}>
-            Rewards
-          </Text>
+          <Text style={styles.navEmoji}>⭐</Text>
+          <Text style={styles.navText}>Rewards</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navItem}
           onPress={() => router.push('/settings')}
         >
-          <Text style={styles.navEmoji}>
-            ⚙️
-          </Text>
-
-          <Text style={styles.navText}>
-            Settings
-          </Text>
+          <Text style={styles.navEmoji}>⚙️</Text>
+          <Text style={styles.navText}>Settings</Text>
         </TouchableOpacity>
-
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F4F7F8',
   },
-
   scroll: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 120,
   },
 
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 28,
+    backgroundColor: '#E8F8F7',
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-
   greeting: {
     fontSize: 14,
-    color: '#888',
-    fontWeight: '500',
+    color: '#0D9488',
+    fontWeight: '600',
+    marginBottom: 2,
   },
-
   name: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
-    color: '#2D2D2D',
+    color: '#134E4A',
   },
-
   avatarCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#4ECDC4',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
   },
-
   avatarText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#fff',
   },
 
+  // Section titles
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#2D2D2D',
-    marginBottom: 12,
+    color: '#64748B',
+    marginBottom: 14,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
 
+  // Kids row
   kidsRow: {
-    marginBottom: 28,
+    marginBottom: 32,
   },
-
   kidsRowContent: {
-    gap: 12,
-    paddingRight: 24,
+    gap: 14,
+    paddingRight: 8,
   },
-
   noKidsText: {
     fontSize: 14,
-    color: '#888',
+    color: '#94A3B8',
     alignSelf: 'center',
     marginRight: 12,
   },
-
   kidCard: {
-    backgroundColor: '#F0FFFE',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    width: 110,
-    borderWidth: 1.5,
-    borderColor: '#4ECDC4',
+    width: 124,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
-
   kidAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#4ECDC4',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#CCFBF1',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 12,
+  },
+  kidAvatarEmoji: {
+    fontSize: 30,
+  },
+  kidName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  childBadge: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     marginBottom: 8,
   },
-
-  kidAvatarEmoji: {
-    fontSize: 28,
-  },
-
-  kidName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2D2D2D',
-    marginBottom: 4,
-  },
-
-  childBadge: {
-    backgroundColor: '#E63946',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginBottom: 6,
-  },
-
   childBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
-    color: '#fff',
+    color: '#DC2626',
+    letterSpacing: 0.4,
   },
-
   kidCode: {
-    fontSize: 9,
-    color: '#888',
+    fontSize: 12,
+    color: '#64748B',
     fontWeight: '600',
+    letterSpacing: 0.5,
   },
 
+  // Add Kid card
   addKidCard: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    width: 110,
+    width: 124,
     borderWidth: 1.5,
-    borderColor: '#DDD',
+    borderColor: '#CBD5E1',
     borderStyle: 'dashed',
   },
-
   addKidCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#EEE',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-
   addKidPlus: {
-    fontSize: 28,
-    color: '#888',
+    fontSize: 32,
+    color: '#94A3B8',
     fontWeight: '300',
   },
-
   addKidText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#888',
+    color: '#64748B',
   },
 
-  parentCard: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#EEE',
-  },
-
-  parentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  parentInitial: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#4ECDC4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  parentInitialText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-  },
-
-  parentName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#2D2D2D',
-  },
-
-  parentRole: {
-    fontSize: 11,
-    color: '#888',
-    fontWeight: '600',
-  },
-
-  parentArrow: {
-    fontSize: 22,
-    color: '#CCC',
-  },
-
-  // Quick Actions: Three buttons per row
+  // Quick Actions
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    gap: 10,
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    gap: 14,
   },
-
   actionBtn: {
-    width: '30%',
-    backgroundColor: '#F0FFFE',
-    borderRadius: 14,
-    padding: 14,
+    width: '47%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#4ECDC4',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
-
+  actionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
   actionEmoji: {
-    fontSize: 22,
-    marginBottom: 4,
+    fontSize: 24,
   },
-
   actionText: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#2D9E98',
+    color: '#1E293B',
   },
 
+  // Bottom Nav
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    paddingVertical: 10,
-    paddingBottom: 24,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 10,
+    paddingBottom: 28,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 10,
   },
-
   navItem: {
     flex: 1,
     alignItems: 'center',
-    gap: 2,
+    paddingVertical: 4,
   },
-
   navActive: {},
-
   navEmoji: {
     fontSize: 22,
+    marginBottom: 3,
   },
-
   navText: {
     fontSize: 11,
-    color: '#888',
+    color: '#94A3B8',
     fontWeight: '600',
   },
-
   navTextActive: {
-    color: '#4ECDC4',
+    color: '#0D9488',
+    fontWeight: '700',
   },
-
+  activeIndicator: {
+    marginTop: 5,
+    width: 18,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#4ECDC4',
+  },
 });
