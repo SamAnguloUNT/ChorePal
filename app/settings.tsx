@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
-import { sendPasswordResetEmail, signOut } from 'firebase/auth';
+import { deleteUser, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -264,6 +265,62 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    const user = auth.currentUser;
+
+    if (!user) {
+      Alert.alert('Error', 'No user is currently signed in.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your ChorePal account? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'users', user.uid));
+              await deleteUser(user);
+
+              Alert.alert(
+                'Account Deleted',
+                'Your ChorePal account has been permanently deleted.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => router.replace('/'),
+                  },
+                ]
+              );
+            } catch (error: any) {
+              console.error('Delete account error:', error);
+
+              if (error?.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Sign In Again',
+                  'For security, please log out, sign back in, and try deleting your account again.'
+                );
+                return;
+              }
+
+              Alert.alert(
+                'Error',
+                'Unable to delete your account. Please try again.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleContact = () => {
     Linking.openURL('mailto:support@chorepal.com?subject=ChorePal Support');
   };
@@ -370,6 +427,17 @@ export default function SettingsScreen() {
 
         {/* Version */}
         <Text style={styles.versionText}>ChorePal v1.0.0</Text>
+
+        {/* Danger Zone — kept at the very bottom, away from everyday actions */}
+        <View style={styles.dangerZone}>
+          <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
+          <TouchableOpacity
+            style={styles.deleteAccountBtn}
+            onPress={handleDeleteAccount}
+          >
+            <Text style={styles.deleteAccountBtnText}>🗑️ Delete Account</Text>
+          </TouchableOpacity>
+        </View>
 
       </ScrollView>
 
@@ -632,6 +700,32 @@ const styles = StyleSheet.create({
   },
   logoutBtnText: { color: '#E63946', fontSize: 16, fontWeight: '700' },
   versionText: { textAlign: 'center', color: '#CCC', fontSize: 13 },
+
+  // Danger Zone
+  dangerZone: {
+    marginTop: 56,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+    alignItems: 'center',
+  },
+  dangerZoneTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#BBB',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  deleteAccountBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  deleteAccountBtnText: {
+    color: '#E63946',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
   // FAQ
   faqContainer: { flex: 1, backgroundColor: '#FFFFFF' },

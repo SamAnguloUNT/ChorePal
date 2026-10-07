@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,39 @@ import { registerForPushNotifications, sendPushNotification } from '../utils/not
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
 import { useHomeGeofence } from '../utils/useHomeGeofence';
 import { analyzeImage } from '../utils/visionApi';
+
+// Turns a chore's priority (string like "high" or a number 1-3) into a label + colors.
+// Returns null when the chore has no priority so the badge is simply hidden.
+const getPriorityInfo = (priority: any) => {
+  if (priority === undefined || priority === null || priority === '') return null;
+  const value = String(priority).trim().toLowerCase();
+  if (value === 'high' || value === 'urgent' || value === '3') {
+    return { label: 'High Priority', emoji: '🔴', bg: '#FFE5E5', color: '#E63946' };
+  }
+  if (value === 'medium' || value === 'normal' || value === '2') {
+    return { label: 'Medium Priority', emoji: '🟡', bg: '#FFF3CD', color: '#B7791F' };
+  }
+  if (value === 'low' || value === '1') {
+    return { label: 'Low Priority', emoji: '🟢', bg: '#E0FFF4', color: '#2A9D8F' };
+  }
+  return { label: `${String(priority)} Priority`, emoji: '⭐', bg: '#F0FFFE', color: '#2A9D8F' };
+};
+
+// Lower number = shows higher in the list. Chores with no priority go after the ranked ones.
+const getPriorityRank = (priority: any) => {
+  const value = String(priority ?? '').trim().toLowerCase();
+  if (value === 'high' || value === 'urgent' || value === '3') return 0;
+  if (value === 'medium' || value === 'normal' || value === '2') return 1;
+  if (value === 'low' || value === '1') return 2;
+  return 3;
+};
+
+// Handles a few common ways the parent app might store "optional".
+const isChoreOptional = (chore: any) =>
+  chore?.optional === true ||
+  chore?.isOptional === true ||
+  chore?.required === false ||
+  String(chore?.type ?? '').toLowerCase() === 'optional';
 
 export default function ChildDashboard() {
   const router = useRouter();
@@ -159,15 +192,27 @@ export default function ChildDashboard() {
   // NOTE: Auto-speak useEffect was removed.
   // The child now taps the TextToSpeech button to hear the AI feedback.
 
-  const completedCount = chores.filter(c => c.completed).length;
-  const progress = chores.length > 0 ? completedCount / chores.length : 0;
+  // Order: required chores first, then optional ones. Inside each group, unfinished
+  // chores come before finished ones, and higher priority comes first.
+  const sortedChores = [...chores].sort((a, b) => {
+    const optionalDiff = Number(isChoreOptional(a)) - Number(isChoreOptional(b));
+    if (optionalDiff !== 0) return optionalDiff;
+    const doneDiff = Number(a.completed) - Number(b.completed);
+    if (doneDiff !== 0) return doneDiff;
+    return getPriorityRank(a.priority) - getPriorityRank(b.priority);
+  });
+
+  // Optional chores are bonus work, so they don't count against daily progress.
+  const requiredChores = chores.filter(c => !isChoreOptional(c));
+  const completedCount = requiredChores.filter(c => c.completed).length;
+  const progress = requiredChores.length > 0 ? completedCount / requiredChores.length : 0;
 
   // Home reminders: "Welcome home, you have N chores" on arrival, and
   // "Don't forget your chores" on leaving. Foreground-only (works in Expo Go).
   // `homeLocation` is copied onto the child doc by the parent app.
   useHomeGeofence(
     childData?.homeLocation,
-    chores.filter(c => !c.completed).length
+    requiredChores.filter(c => !c.completed).length
   );
 
   const handleLogout = async () => {
@@ -310,102 +355,168 @@ export default function ChildDashboard() {
     }
   };
 
+  const todoCount = requiredChores.filter(c => !c.completed).length;
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.profileSection}>
-            <TouchableOpacity style={styles.profileCircle} onPress={handleLogout}>
-              <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
+        {/* Hero: greeting, log out, and daily progress in one place */}
+        <View style={styles.hero}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.profileSection}>
+              <View style={styles.profileCircle}>
+                <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
+              </View>
+              <View style={styles.heroNameBlock}>
+                <Text style={styles.heroGreeting} numberOfLines={1}>
+                  Hi, {childData?.name || 'there'}!
+                </Text>
+                <Text style={styles.heroSub}>
+                  {requiredChores.length === 0
+                    ? 'No chores to do right now'
+                    : todoCount === 0
+                      ? 'All done today! 🎉'
+                      : todoCount === 1
+                        ? '1 chore to go'
+                        : `${todoCount} chores to go`}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.logoutBtn}
+              onPress={handleLogout}
+              accessibilityRole="button"
+              accessibilityLabel="Log out">
+              <Text style={styles.logoutBtnEmoji}>🚪</Text>
+              <Text style={styles.logoutBtnText}>Log out</Text>
             </TouchableOpacity>
-            <View>
-              <Text style={styles.childName}>{childData?.name || 'Loading...'} ⭐</Text>
-              <Text style={styles.childLabel}>CHILD'S LOGIN</Text>
-            </View>
           </View>
-          <View style={styles.coinsBadge}>
-            <Text style={styles.coinsEmoji}>🪙</Text>
-            <View>
-              <Text style={styles.coinsAmount}>{childData?.coinBalance || 0}</Text>
-              <Text style={styles.coinsLabel}>TOTAL COINS</Text>
+
+          <View>
+            <View style={styles.heroProgressRow}>
+              <Text style={styles.heroProgressLabel}>Today's progress</Text>
+              <Text style={styles.heroProgressCount}>
+                {requiredChores.length === 0
+                  ? '-'
+                  : `${completedCount} of ${requiredChores.length} done`}
+              </Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
             </View>
           </View>
         </View>
 
-        {/* My Activities */}
-        <Text style={styles.activitiesTitle}>MY ACTIVITIES 🎯</Text>
-
-        {/* Progress Card */}
-        <View style={styles.progressCard}>
-          <Text style={styles.progressLabel}>DAILY PROGRESS</Text>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
-            <View style={[styles.progressThumb, { left: `${Math.max(0, progress * 100 - 3)}%` }]} />
+        {/* Quick stats */}
+        <View style={styles.statsRow}>
+          <View style={[styles.statTile, styles.statTileCoins]}>
+            <Text style={styles.statEmoji}>🪙</Text>
+            <Text style={styles.statValue}>{childData?.coinBalance || 0}</Text>
+            <Text style={styles.statLabel}>Coins</Text>
           </View>
-          <Text style={styles.progressText}>
-            {Math.round(progress * 100)}% Complete! {progress === 1 ? '🎉' : '💪'}
-          </Text>
+          <View style={styles.statTile}>
+            <Text style={styles.statEmoji}>📋</Text>
+            <Text style={styles.statValue}>{todoCount}</Text>
+            <Text style={styles.statLabel}>To do</Text>
+          </View>
+          <View style={styles.statTile}>
+            <Text style={styles.statEmoji}>✅</Text>
+            <Text style={styles.statValue}>{completedCount}</Text>
+            <Text style={styles.statLabel}>Done</Text>
+          </View>
         </View>
 
-        {/* To Do */}
-        <Text style={styles.toDoTitle}>TO DO:</Text>
+        {/* Chores */}
+        <Text style={styles.sectionTitle}>Your chores</Text>
         <View style={styles.choresList}>
           {chores.length === 0 ? (
             <View style={styles.noChores}>
               <Text style={styles.noChoresEmoji}>🎉</Text>
-              <Text style={styles.noChoresText}>No chores assigned yet!</Text>
+              <Text style={styles.noChoresText}>No chores yet</Text>
+              <Text style={styles.noChoresHint}>New chores from your parent will show up here.</Text>
             </View>
           ) : (
-            chores.map((chore) => (
-              <View
-                key={chore.id}
-                style={[
-                  styles.choreCard,
-                  chore.completed ? styles.choreCompleted : styles.choreIncomplete
-                ]}>
-                <View style={styles.choreLeft}>
-                  <View style={[
-                    styles.choreStatusIcon,
-                    chore.completed ? styles.statusComplete : styles.statusIncomplete
-                  ]}>
-                    <Text style={styles.statusEmoji}>{chore.completed ? '✅' : '❌'}</Text>
-                  </View>
-                  <View style={styles.choreTextBlock}>
-                    <Text style={[
-                      styles.choreTitle,
-                      chore.completed && styles.choreTitleDone
-                    ]}>{chore.title}</Text>
-                    <Text style={styles.choreCoins}>
-                      Due today | {chore.coins} 🪙
-                    </Text>
-                  </View>
-                  {/* Text-to-speech: read the chore aloud */}
-                  <TextToSpeech
-                    text={`${chore.title}. It's worth ${chore.coins} coins.`}
-                    size={24}
-                  />
-                </View>
-                {!chore.completed && (
+            sortedChores.map((chore, index) => {
+              const priority = getPriorityInfo(chore.priority);
+              const optional = isChoreOptional(chore);
+              const stripeColor = chore.completed
+                ? '#C9D6D4'
+                : optional
+                  ? '#7B61FF'
+                  : priority?.color || '#4ECDC4';
+              return (
+                <Fragment key={chore.id}>
+                  {/* Section header shown once, right before the first optional chore */}
+                  {optional && (index === 0 || !isChoreOptional(sortedChores[index - 1])) && (
+                    <Text style={styles.optionalHeader}>⭐ Bonus chores (optional)</Text>
+                  )}
                   <TouchableOpacity
-                    style={styles.uploadBtn}
-                    onPress={() => openVerification(chore)}>
-                    <Text style={styles.uploadBtnText}>📸</Text>
+                    activeOpacity={0.85}
+                    onPress={() => openVerification(chore)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open chore: ${chore.title}`}
+                    style={[styles.choreCard, chore.completed && styles.choreCardDone]}>
+                    <View style={[styles.priorityStripe, { backgroundColor: stripeColor }]} />
+                    <View style={styles.choreBody}>
+                      <View style={[
+                        styles.statusCircle,
+                        chore.completed && !chore.verified && styles.statusPending,
+                        chore.verified && styles.statusDone,
+                      ]}>
+                        {chore.verified && <Text style={styles.statusMark}>✓</Text>}
+                        {chore.completed && !chore.verified && <Text style={styles.statusPendingMark}>⏳</Text>}
+                      </View>
+
+                      <View style={styles.choreTextBlock}>
+                        <Text
+                          style={[styles.choreTitle, chore.completed && styles.choreTitleDone]}
+                          numberOfLines={2}>
+                          {chore.title}
+                        </Text>
+                        <View style={styles.chipRow}>
+                          <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
+                            <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {chore.coins ?? 0}</Text>
+                          </View>
+                          {priority && (
+                            <View style={[styles.chip, { backgroundColor: priority.bg }]}>
+                              <Text style={[styles.chipText, { color: priority.color }]}>
+                                {priority.emoji} {priority.label.replace(' Priority', '')}
+                              </Text>
+                            </View>
+                          )}
+                          {optional && (
+                            <View style={[styles.chip, { backgroundColor: '#EFEAFF' }]}>
+                              <Text style={[styles.chipText, { color: '#7B61FF' }]}>Optional</Text>
+                            </View>
+                          )}
+                          {chore.completed && (
+                            <View style={[styles.chip, { backgroundColor: chore.verified ? '#E0FFF4' : '#FFF3CD' }]}>
+                              <Text style={[styles.chipText, { color: chore.verified ? '#2A9D8F' : '#B7791F' }]}>
+                                {chore.verified ? 'Approved' : 'Waiting for approval'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Text-to-speech: read the chore aloud */}
+                      <TextToSpeech
+                        text={`${chore.title}. It's worth ${chore.coins ?? 0} coins.`}
+                        size={24}
+                      />
+
+                      {!chore.completed && (
+                        // Visual hint only: the whole card is tappable.
+                        <View style={styles.actionBtn}>
+                          <Text style={styles.actionBtnText}>📸</Text>
+                        </View>
+                      )}
+                    </View>
                   </TouchableOpacity>
-                )}
-                {chore.completed && !chore.verified && (
-                  <View style={styles.pendingBadge}>
-                    <Text style={styles.pendingText}>⏳</Text>
-                  </View>
-                )}
-                {chore.completed && chore.verified && (
-                  <View style={styles.verifiedBadge}>
-                    <Text style={styles.verifiedText}>✓</Text>
-                  </View>
-                )}
-              </View>
-            ))
+                </Fragment>
+              );
+            })
           )}
         </View>
 
@@ -505,12 +616,14 @@ export default function ChildDashboard() {
                   </TouchableOpacity>
                 )}
 
+                <ScrollView showsVerticalScrollIndicator={false}>
+
                 <Text style={styles.modalTitle}>
                   {aiResult
                     ? aiResult.isComplete
                       ? 'Great Job! 🎉'
                       : 'Not Quite! 🤔'
-                    : 'Good Job! 📸'}
+                    : selectedChore?.title || 'Chore'}
                 </Text>
 
                 <Text style={styles.modalSubtitle}>
@@ -520,8 +633,64 @@ export default function ChildDashboard() {
                         ? 'Your chore has been sent to your parent for final approval!'
                         : 'AI is reviewing your photo...'
                       : 'Please redo the chore and try again!'
-                    : `Upload a photo of "${selectedChore?.title}" to verify!`}
+                    : selectedChore?.completed
+                      ? selectedChore?.verified
+                        ? 'Your parent approved this chore. Nice work! ✅'
+                        : 'Waiting for your parent to approve this chore ⏳'
+                      : 'Take or upload a photo to show you finished!'}
                 </Text>
+
+                {/* Chore details: priority, coins, and description with text-to-speech */}
+                {!aiResult && selectedChore && (
+                  <>
+                    <View style={styles.detailBadges}>
+                      {isChoreOptional(selectedChore) && (
+                        <View style={styles.optionalBadge}>
+                          <Text style={styles.optionalBadgeText}>⭐ Optional bonus</Text>
+                        </View>
+                      )}
+                      {getPriorityInfo(selectedChore.priority) && (
+                        <View style={[
+                          styles.priorityBadge,
+                          { backgroundColor: getPriorityInfo(selectedChore.priority)!.bg }
+                        ]}>
+                          <Text style={[
+                            styles.priorityBadgeText,
+                            { color: getPriorityInfo(selectedChore.priority)!.color }
+                          ]}>
+                            {getPriorityInfo(selectedChore.priority)!.emoji}{' '}
+                            {getPriorityInfo(selectedChore.priority)!.label}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.coinBadge}>
+                        <Text style={styles.coinBadgeText}>
+                          🪙 {selectedChore.coins ?? 0} coins
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.descriptionBox}>
+                      <View style={styles.descriptionHeader}>
+                        <Text style={styles.descriptionLabel}>WHAT TO DO</Text>
+                        <TextToSpeech
+                          text={[
+                            selectedChore.title,
+                            selectedChore.description || 'No description provided.',
+                            getPriorityInfo(selectedChore.priority)
+                              ? `This is a ${getPriorityInfo(selectedChore.priority)!.label.toLowerCase()} chore.`
+                              : '',
+                            `It's worth ${selectedChore.coins ?? 0} coins.`,
+                          ].filter(Boolean).join(' ')}
+                          size={28}
+                        />
+                      </View>
+                      <Text style={styles.descriptionText}>
+                        {selectedChore.description || 'No description provided.'}
+                      </Text>
+                    </View>
+                  </>
+                )}
 
                 {/* Photo Preview */}
                 {photo && (
@@ -579,6 +748,13 @@ export default function ChildDashboard() {
                     }}>
                     <Text style={styles.retryBtnText}>Try Again 📸</Text>
                   </TouchableOpacity>
+                ) : selectedChore?.completed ? (
+                  // Chore already submitted/approved — nothing to upload, just close
+                  <TouchableOpacity
+                    style={styles.doneBtn}
+                    onPress={() => setModalVisible(false)}>
+                    <Text style={styles.doneBtnText}>Close</Text>
+                  </TouchableOpacity>
                 ) : (
                   // No result yet — show camera/upload and submit
                   <>
@@ -601,6 +777,7 @@ export default function ChildDashboard() {
                   </>
                 )}
 
+                </ScrollView>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -612,161 +789,168 @@ export default function ChildDashboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    backgroundColor: '#F0FFFE',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#4ECDC4',
+  container: { flex: 1, backgroundColor: '#F3FBF9' },
+  scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
+
+  // Hero
+  hero: {
+    backgroundColor: '#0F7F76',
+    borderRadius: 28,
+    padding: 20,
+    gap: 20,
+    marginBottom: 14,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
   },
-  profileSection: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  profileSection: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   profileCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#4ECDC4',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
   },
-  profileEmoji: { fontSize: 28 },
-  childName: { fontSize: 18, fontWeight: '800', color: '#2D2D2D' },
-  childLabel: { fontSize: 10, color: '#888', fontWeight: '600' },
-  coinsBadge: {
+  profileEmoji: { fontSize: 32 },
+  heroNameBlock: { flexShrink: 1 },
+  heroGreeting: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
+  heroSub: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.88)', marginTop: 2 },
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F4B942',
-    borderRadius: 14,
+    gap: 5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    gap: 6,
+    minHeight: 40,
   },
-  coinsEmoji: { fontSize: 20 },
-  coinsAmount: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  coinsLabel: { fontSize: 9, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
-  activitiesTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2D2D2D',
-    textAlign: 'center',
-    marginBottom: 14,
-    letterSpacing: 1,
-  },
-  progressCard: {
-    backgroundColor: '#F0FFFE',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#4ECDC4',
-  },
-  progressLabel: { fontSize: 11, fontWeight: '700', color: '#888', marginBottom: 10, textAlign: 'center', letterSpacing: 1 },
+  logoutBtnEmoji: { fontSize: 15 },
+  logoutBtnText: { fontSize: 13, fontWeight: '800', color: '#C62828' },
+  heroProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 },
+  heroProgressLabel: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  heroProgressCount: { fontSize: 14, fontWeight: '800', color: '#FFD479' },
   progressBarBg: {
-    height: 12,
-    backgroundColor: '#DDD',
-    borderRadius: 6,
-    marginBottom: 8,
-    position: 'relative',
-    justifyContent: 'center',
+    height: 14,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 7,
+    overflow: 'hidden',
   },
-  progressBarFill: {
-    height: 12,
-    backgroundColor: '#F4B942',
-    borderRadius: 6,
-    position: 'absolute',
+  progressBarFill: { height: 14, backgroundColor: '#F4B942', borderRadius: 7 },
+
+  // Stats
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  statTile: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#DDF1EE',
   },
-  progressThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#F4B942',
-    position: 'absolute',
-    top: -4,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  progressText: { fontSize: 14, fontWeight: '700', color: '#4ECDC4', textAlign: 'center' },
-  toDoTitle: { fontSize: 16, fontWeight: '800', color: '#2D2D2D', marginBottom: 12, letterSpacing: 1 },
+  statTileCoins: { backgroundColor: '#FFF4D6', borderColor: '#F4B942' },
+  statEmoji: { fontSize: 22 },
+  statValue: { fontSize: 24, fontWeight: '900', color: '#12756D', marginTop: 2 },
+  statLabel: { fontSize: 12, fontWeight: '600', color: '#6B7C79' },
+
+  // Chores
+  sectionTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B', marginBottom: 12 },
   choresList: { gap: 12 },
-  noChores: { alignItems: 'center', paddingVertical: 40, gap: 8 },
-  noChoresEmoji: { fontSize: 48 },
-  noChoresText: { fontSize: 16, color: '#888', fontWeight: '600' },
+  noChores: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#DDF1EE',
+  },
+  noChoresEmoji: { fontSize: 56 },
+  noChoresText: { fontSize: 18, fontWeight: '800', color: '#1F2D2B' },
+  noChoresHint: { fontSize: 14, color: '#6B7C79', textAlign: 'center' },
+  optionalHeader: { fontSize: 17, fontWeight: '800', color: '#7B61FF', marginTop: 12 },
   choreCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 16,
-    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    overflow: 'hidden',
     borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  choreCompleted: { backgroundColor: '#dbd7d7b9', borderColor: '#4ECDC4' },
-  choreIncomplete: { backgroundColor: '#FFF5F5', borderColor: '#FFB3B3' },
-  choreLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  choreTextBlock: { flexShrink: 1 },
-  choreStatusIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  choreCardDone: { backgroundColor: '#F1F5F4' },
+  priorityStripe: { width: 8 },
+  choreBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  statusCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2.5,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statusComplete: { backgroundColor: '#4ECDC4' },
-  statusIncomplete: { backgroundColor: '#FFE5E5' },
-  statusEmoji: { fontSize: 16 },
-  choreTitle: { fontSize: 14, fontWeight: '700', color: '#2D2D2D' },
-  choreTitleDone: { textDecorationLine: 'line-through', color: '#888' },
-  choreCoins: { fontSize: 12, color: '#888', marginTop: 2 },
-  uploadBtn: {
+  statusPending: { backgroundColor: '#FFF3CD', borderColor: '#F4B942' },
+  statusDone: { backgroundColor: '#4ECDC4', borderColor: '#4ECDC4' },
+  statusMark: { fontSize: 20, fontWeight: '900', color: '#FFFFFF' },
+  statusPendingMark: { fontSize: 18 },
+  choreTextBlock: { flex: 1 },
+  choreTitle: { fontSize: 18, fontWeight: '800', color: '#1F2D2B' },
+  choreTitleDone: { textDecorationLine: 'line-through', color: '#8A9996' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
+  chipText: { fontSize: 12, fontWeight: '700' },
+  actionBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#4ECDC4',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  uploadBtnText: { fontSize: 16 },
-  pendingBadge: {
-    backgroundColor: '#FFF3CD',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pendingText: { fontSize: 16 },
-  verifiedBadge: {
-    backgroundColor: '#E0FFF4',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  verifiedText: { fontSize: 16, color: '#4ECDC4', fontWeight: '700' },
+  actionBtnText: { fontSize: 22 },
+
+  // Bottom nav
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    paddingVertical: 10,
-    paddingBottom: 24,
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 26,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  navItem: { flex: 1, alignItems: 'center', gap: 2 },
-  navActive: {},
-  navEmoji: { fontSize: 22 },
-  navText: { fontSize: 11, color: '#888', fontWeight: '600' },
-  navTextActive: { color: '#4ECDC4' },
+  navItem: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 18 },
+  navActive: { backgroundColor: '#E6F8F6' },
+  navEmoji: { fontSize: 24 },
+  navText: { fontSize: 12, color: '#7C8B88', fontWeight: '700' },
+  navTextActive: { color: '#0F7F76' },
 
   // Automatic Discipline System deduction popup
   disciplineModalOverlay: {
@@ -893,6 +1077,39 @@ const styles = StyleSheet.create({
   aiFeedbackWarning: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
   aiFeedbackEmoji: { fontSize: 22 },
   aiFeedbackText: { fontSize: 14, color: '#444', fontWeight: '500', lineHeight: 20 },
+  optionalBadge: {
+    backgroundColor: '#EFEAFF',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  optionalBadgeText: { fontSize: 13, fontWeight: '800', color: '#7B61FF' },
+  detailBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  priorityBadge: { borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
+  priorityBadgeText: { fontSize: 13, fontWeight: '800' },
+  coinBadge: {
+    backgroundColor: '#FFF3CD',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  coinBadgeText: { fontSize: 13, fontWeight: '800', color: '#B7791F' },
+  descriptionBox: {
+    backgroundColor: '#F0FFFE',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#4ECDC4',
+  },
+  descriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  descriptionLabel: { fontSize: 11, fontWeight: '800', color: '#888', letterSpacing: 1 },
+  descriptionText: { fontSize: 16, color: '#2D2D2D', lineHeight: 23, fontWeight: '500' },
   photoButtons: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   photoBtn: {
     flex: 1,
