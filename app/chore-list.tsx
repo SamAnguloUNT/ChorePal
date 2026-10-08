@@ -24,6 +24,15 @@ const PRIORITY_CONFIG: Record<string, { color: string }> = {
   high: { color: '#E63946' },
 };
 
+// Deadlines are saved as "YYYY-MM-DD". Show them as a local date (not shifted a day by time zones).
+const formatDeadline = (deadline?: string) => {
+  if (!deadline || deadline === 'No deadline') return 'No deadline';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(deadline);
+  if (!m) return deadline;
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 export default function ChoreListScreen() {
   const router = useRouter();
   const [expandedChild, setExpandedChild] = useState<string | null>(null);
@@ -101,7 +110,7 @@ export default function ChoreListScreen() {
           setChildrenWithChores(grouped);
           // Auto expand first child
           if (grouped.length > 0) {
-            setExpandedChild(grouped[0].childId);
+            setExpandedChild(prev => prev ?? grouped[0].childId);
           }
         } catch (error) {
           console.error('Error loading chores:', error);
@@ -130,12 +139,14 @@ export default function ChoreListScreen() {
   const handleEditChore = (chore: any, childName: string) => {
     Alert.alert(
       'Edit Chore',
-      `What would you like to do with "${chore.title}" for ${childName}?`,
+      chore.assignedTo === 'all'
+        ? `What would you like to do with "${chore.title}"? It is assigned to all children.`
+        : `What would you like to do with "${chore.title}" for ${childName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: '✏️ Edit',
-          onPress: () => router.push('/create-chore')
+          onPress: () => router.push({ pathname: '/create-chore', params: { id: chore.id } })
         },
         {
           text: '🗑️ Delete',
@@ -252,7 +263,7 @@ export default function ChoreListScreen() {
                               </View>
                               <View style={styles.choreBottom}>
                                 <Text style={styles.choreCoins}>🪙 {chore.coins} coins</Text>
-                                <Text style={styles.choreDeadline}>📅 {chore.deadline}</Text>
+                                <Text style={styles.choreDeadline}>📅 {formatDeadline(chore.deadline)}</Text>
                                 {chore.repeatable && (
                                   <Text style={styles.choreRepeatable}>🔄 Recurring</Text>
                                 )}

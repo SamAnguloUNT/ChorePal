@@ -1,24 +1,47 @@
-import { useRouter } from 'expo-router';
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text, TextInput, TouchableOpacity,
-  TouchableWithoutFeedback,
   View
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { auth, db } from '../config/firebase';
 
+// Highest number of coins a single chore can be worth. Change this one number to adjust the limit.
+const MAX_COINS = 100;
+
+// Dates are stored as "YYYY-MM-DD" strings. Always build/parse them in LOCAL time.
+// (new Date('2026-10-07') is read as UTC midnight, which shows as Oct 6 in US time zones,
+// and toISOString() flips to "tomorrow" in the evening.)
+const toLocalDateString = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const parseLocalDate = (dateStr: string) => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
 export default function CreateChoreScreen() {
   const router = useRouter();
+
+  // When opened from the chore list with an id, this screen edits that chore instead of creating one
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const editId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const isEdit = !!editId;
+
+  const scrollRef = useRef<ScrollView>(null);
+  const descriptionY = useRef(0);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -32,6 +55,7 @@ export default function CreateChoreScreen() {
   const [selectedDate, setSelectedDate] = useState('');
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(isEdit);
   const [children, setChildren] = useState<any[]>([]);
 
   // Load real children from Firestore
@@ -54,15 +78,83 @@ export default function CreateChoreScreen() {
     loadChildren();
   }, []);
 
+  // Edit mode: load the existing chore into the form
+  useEffect(() => {
+    if (!editId) return;
+    const loadChore = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'chores', editId));
+        if (!snap.exists()) {
+          Alert.alert('Error!', 'This chore could not be found.', [
+            { text: 'OK', onPress: () => router.back() }
+          ]);
+          return;
+        }
+        const d: any = snap.data();
+        setTitle(d.title ?? '');
+        setCoins(d.coins !== undefined && d.coins !== null ? String(d.coins) : '');
+        setDescription(d.description ?? '');
+        setChoreType(d.choreType === 'optional' ? 'optional' : 'required');
+        setRepeatable(!!d.repeatable);
+        setPriority(d.priority === 'low' || d.priority === 'high' ? d.priority : 'medium');
+        if (d.assignedTo && d.assignedTo !== 'all') {
+          setAssignTo('specific');
+          setSelectedChildren([d.assignedTo]);
+        } else {
+          setAssignTo('all');
+        }
+        setSelectedDate(typeof d.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.deadline) ? d.deadline : '');
+      } catch (error: any) {
+        Alert.alert('Error!', error.message);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    loadChore();
+  }, [editId]);
+
   const toggleChild = (id: string) => {
+    if (isEdit) {
+      // An existing chore belongs to exactly one child (or all), so only allow one selection
+      setSelectedChildren([id]);
+      return;
+    }
     setSelectedChildren(prev =>
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     );
   };
 
-  const handleCreate = async () => {
-    if (!title) { Alert.alert('Missing!', 'Please enter a chore title!'); return; }
-    if (!coins) { Alert.alert('Missing!', 'Please enter coin amount!'); return; }
+  // Keep only digits and never allow more than MAX_COINS
+  const handleCoinsChange = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, '');
+    if (!digits) { setCoins(''); return; }
+    setCoins(String(Math.min(parseInt(digits, 10), MAX_COINS)));
+  };
+
+  const changeCoins = (delta: number) => {
+    setCoins(prev => {
+      const current = parseInt(prev || '0', 10) || 0;
+      return String(Math.min(MAX_COINS, Math.max(0, current + delta)));
+    });
+  };
+
+  // Scroll the description box above the keyboard when it is focused
+  const scrollToDescription = () => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, descriptionY.current - 100), animated: true });
+    }, 300);
+  };
+
+  const openCalendar = () => {
+    Keyboard.dismiss();
+    setCalendarVisible(true);
+  };
+
+  const handleSave = async () => {
+    const coinsNum = parseInt(coins, 10);
+    if (!title.trim()) { Alert.alert('Missing!', 'Please enter a chore title!'); return; }
+    if (!coinsNum || coinsNum < 1) { Alert.alert('Missing!', 'Please enter coin amount!'); return; }
+    if (coinsNum > MAX_COINS) { Alert.alert('Too many coins!', `A chore can be worth at most ${MAX_COINS} coins.`); return; }
     if (!selectedDate) { Alert.alert('Missing!', 'Please set a deadline!'); return; }
     if (assignTo === 'specific' && selectedChildren.length === 0) {
       Alert.alert('Missing!', 'Please select at least one child!'); return;
@@ -76,18 +168,36 @@ export default function CreateChoreScreen() {
         return;
       }
 
+      const choreData = {
+        title: title.trim(),
+        coins: coinsNum,
+        description,
+        choreType,
+        repeatable,
+        priority,
+        deadline: selectedDate,
+      };
+
+      if (isEdit && editId) {
+        // Update the existing chore (keeps its status, owner and created date)
+        await updateDoc(doc(db, 'chores', editId), {
+          ...choreData,
+          assignedTo: assignTo === 'all' ? 'all' : selectedChildren[0],
+          updatedAt: new Date(),
+        });
+
+        Alert.alert('Chore Updated! ✅', `"${title.trim()}" has been saved.`, [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+        return;
+      }
+
       // If assigning to specific children create a chore for each
       if (assignTo === 'specific') {
         for (const childId of selectedChildren) {
           await addDoc(collection(db, 'chores'), {
-            title,
-            coins: parseInt(coins),
-            description,
-            choreType,
-            repeatable,
-            priority,
+            ...choreData,
             assignedTo: childId,
-            deadline: selectedDate,
             status: 'pending',
             parentId: user.uid,
             createdAt: new Date(),
@@ -96,21 +206,15 @@ export default function CreateChoreScreen() {
       } else {
         // Assign to all children
         await addDoc(collection(db, 'chores'), {
-          title,
-          coins: parseInt(coins),
-          description,
-          choreType,
-          repeatable,
-          priority,
+          ...choreData,
           assignedTo: 'all',
-          deadline: selectedDate,
           status: 'pending',
           parentId: user.uid,
           createdAt: new Date(),
         });
       }
 
-      Alert.alert('Chore Created! 🎉', `"${title}" has been assigned successfully!`, [
+      Alert.alert('Chore Created! 🎉', `"${title.trim()}" has been assigned successfully!`, [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error: any) {
@@ -120,66 +224,100 @@ export default function CreateChoreScreen() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return 'Set Deadline';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const handleDelete = () => {
+    if (!editId) return;
+    Alert.alert('Delete Chore?', `Are you sure you want to delete "${title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setLoading(true);
+            await deleteDoc(doc(db, 'chores', editId));
+            router.back();
+          } catch (error: any) {
+            Alert.alert('Error!', error.message);
+          } finally {
+            setLoading(false);
+          }
+        }
+      }
+    ]);
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return 'Set Deadline';
+    return parseLocalDate(dateStr).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+  const today = toLocalDateString(new Date());
+
+  if (isEdit && initialLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.inner}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          showsVerticalScrollIndicator={false}>
 
-            {/* Back */}
-            <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-              <Text style={styles.backText}>← Back</Text>
+          {/* Back */}
+          <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+
+          {/* Title */}
+          <Text style={styles.pageTitle}>{isEdit ? 'Edit Chore ✏️' : 'Create Chore 📋'}</Text>
+
+          {/* Chore Title */}
+          <Text style={styles.label}>Title</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Take out the trash"
+            placeholderTextColor="#aaa"
+            value={title}
+            onChangeText={setTitle}
+            autoCapitalize="words"
+          />
+
+          {/* Coins */}
+          <Text style={styles.label}>Total Coins 🪙</Text>
+          <View style={styles.coinsContainer}>
+            <TouchableOpacity style={styles.coinBtn} onPress={() => changeCoins(-1)}>
+              <Text style={styles.coinBtnText}>−</Text>
             </TouchableOpacity>
-
-            {/* Title */}
-            <Text style={styles.pageTitle}>Create Chore 📋</Text>
-
-            {/* Chore Title */}
-            <Text style={styles.label}>Title</Text>
             <TextInput
-              style={styles.input}
-              placeholder="e.g. Take out the trash"
+              style={styles.coinsInput}
+              placeholder="0"
               placeholderTextColor="#aaa"
-              value={title}
-              onChangeText={setTitle}
-              autoCapitalize="words"
+              value={coins}
+              onChangeText={handleCoinsChange}
+              keyboardType="number-pad"
+              maxLength={String(MAX_COINS).length}
+              textAlign="center"
             />
+            <TouchableOpacity style={styles.coinBtn} onPress={() => changeCoins(1)}>
+              <Text style={styles.coinBtnText}>+</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.hintText}>Maximum {MAX_COINS} coins per chore</Text>
 
-            {/* Coins */}
-            <Text style={styles.label}>Total Coins 🪙</Text>
-            <View style={styles.coinsContainer}>
-              <TouchableOpacity
-                style={styles.coinBtn}
-                onPress={() => setCoins(prev => String(Math.max(0, parseInt(prev || '0') - 1)))}>
-                <Text style={styles.coinBtnText}>−</Text>
-              </TouchableOpacity>
-              <TextInput
-                style={styles.coinsInput}
-                placeholder="0"
-                placeholderTextColor="#aaa"
-                value={coins}
-                onChangeText={setCoins}
-                keyboardType="number-pad"
-                textAlign="center"
-              />
-              <TouchableOpacity
-                style={styles.coinBtn}
-                onPress={() => setCoins(prev => String(parseInt(prev || '0') + 1))}>
-                <Text style={styles.coinBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Description */}
+          {/* Description */}
+          <View onLayout={(e) => { descriptionY.current = e.nativeEvent.layout.y; }}>
             <Text style={styles.label}>Description</Text>
             <TextInput
               style={styles.textArea}
@@ -187,129 +325,132 @@ export default function CreateChoreScreen() {
               placeholderTextColor="#aaa"
               value={description}
               onChangeText={setDescription}
+              onFocus={scrollToDescription}
               multiline
               numberOfLines={3}
               textAlignVertical="top"
             />
+          </View>
 
-            {/* Assign To */}
-            <Text style={styles.label}>Assign To</Text>
-            <View style={styles.toggleRow}>
-              <TouchableOpacity
-                style={[styles.toggleBtn, assignTo === 'all' && styles.toggleActive]}
-                onPress={() => setAssignTo('all')}>
-                <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>
-                  All Children
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleBtn, assignTo === 'specific' && styles.toggleActive]}
-                onPress={() => setAssignTo('specific')}>
-                <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>
-                  Specific Child
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Child Selector — now loads real children */}
-            {assignTo === 'specific' && (
-              <View style={styles.childSelector}>
-                {children.length === 0 ? (
-                  <Text style={styles.noChildrenText}>No children added yet!</Text>
-                ) : (
-                  children.map(child => (
-                    <TouchableOpacity
-                      key={child.id}
-                      style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
-                      onPress={() => toggleChild(child.id)}>
-                      <Text style={styles.childChipEmoji}>{child.avatar}</Text>
-                      <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
-                        {child.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            )}
-
-            {/* Chore Type */}
-            <Text style={styles.label}>Chore Type</Text>
-            <View style={styles.toggleRow}>
-              <TouchableOpacity
-                style={[styles.toggleBtn, choreType === 'required' && styles.toggleActive]}
-                onPress={() => setChoreType('required')}>
-                <Text style={[styles.toggleText, choreType === 'required' && styles.toggleTextActive]}>
-                  Required
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleBtn, choreType === 'optional' && styles.toggleActive]}
-                onPress={() => setChoreType('optional')}>
-                <Text style={[styles.toggleText, choreType === 'optional' && styles.toggleTextActive]}>
-                  Optional
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {choreType === 'optional' && (
-              <Text style={styles.hintText}>Optional chores do not have a set schedule</Text>
-            )}
-
-            {/* Set Deadline */}
-            <Text style={styles.label}>Deadline</Text>
+          {/* Assign To */}
+          <Text style={styles.label}>Assign To</Text>
+          <View style={styles.toggleRow}>
             <TouchableOpacity
-              style={styles.deadlineBtn}
-              onPress={() => setCalendarVisible(true)}>
-              <Text style={styles.deadlineBtnText}>📅 {formatDate(selectedDate)}</Text>
-              <Text style={styles.deadlineArrow}>›</Text>
-            </TouchableOpacity>
-
-            {/* Repeatable */}
-            <Text style={styles.label}>Task can be done repeatedly</Text>
-            <View style={styles.toggleRow}>
-              <TouchableOpacity
-                style={[styles.toggleBtn, !repeatable && styles.toggleActive]}
-                onPress={() => setRepeatable(false)}>
-                <Text style={[styles.toggleText, !repeatable && styles.toggleTextActive]}>No</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleBtn, repeatable && styles.toggleActive]}
-                onPress={() => setRepeatable(true)}>
-                <Text style={[styles.toggleText, repeatable && styles.toggleTextActive]}>Yes</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Priority */}
-            <Text style={styles.label}>Set Priority</Text>
-            <View style={styles.priorityRow}>
-              {(['low', 'medium', 'high'] as const).map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[styles.priorityBtn, priority === p && styles[`priority${p.charAt(0).toUpperCase() + p.slice(1)}Active` as keyof typeof styles]]}
-                  onPress={() => setPriority(p)}>
-                  <Text style={[styles.priorityText, priority === p && styles.priorityTextActive]}>
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Create Button */}
-            <TouchableOpacity
-              style={[styles.createBtn, loading && styles.createBtnDisabled]}
-              onPress={handleCreate}
-              disabled={loading}>
-              <Text style={styles.createBtnText}>
-                {loading ? 'Creating...' : 'Create Chore 🎉'}
+              style={[styles.toggleBtn, assignTo === 'all' && styles.toggleActive]}
+              onPress={() => setAssignTo('all')}>
+              <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>
+                All Children
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleBtn, assignTo === 'specific' && styles.toggleActive]}
+              onPress={() => setAssignTo('specific')}>
+              <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>
+                Specific Child
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            {/* Delete Button */}
-            <TouchableOpacity style={styles.deleteBtn}>
+          {/* Child Selector — now loads real children */}
+          {assignTo === 'specific' && (
+            <View style={styles.childSelector}>
+              {children.length === 0 ? (
+                <Text style={styles.noChildrenText}>No children added yet!</Text>
+              ) : (
+                children.map(child => (
+                  <TouchableOpacity
+                    key={child.id}
+                    style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
+                    onPress={() => toggleChild(child.id)}>
+                    <Text style={styles.childChipEmoji}>{child.avatar}</Text>
+                    <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
+                      {child.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
+
+          {/* Chore Type */}
+          <Text style={styles.label}>Chore Type</Text>
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[styles.toggleBtn, choreType === 'required' && styles.toggleActive]}
+              onPress={() => setChoreType('required')}>
+              <Text style={[styles.toggleText, choreType === 'required' && styles.toggleTextActive]}>
+                Required
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleBtn, choreType === 'optional' && styles.toggleActive]}
+              onPress={() => setChoreType('optional')}>
+              <Text style={[styles.toggleText, choreType === 'optional' && styles.toggleTextActive]}>
+                Optional
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {choreType === 'optional' && (
+            <Text style={styles.hintText}>Optional chores do not have a set schedule</Text>
+          )}
+
+          {/* Set Deadline */}
+          <Text style={styles.label}>Deadline</Text>
+          <TouchableOpacity style={styles.deadlineBtn} onPress={openCalendar}>
+            <Text style={styles.deadlineBtnText}>📅 {formatDate(selectedDate)}</Text>
+            <Text style={styles.deadlineArrow}>›</Text>
+          </TouchableOpacity>
+
+          {/* Repeatable */}
+          <Text style={styles.label}>Task can be done repeatedly</Text>
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[styles.toggleBtn, !repeatable && styles.toggleActive]}
+              onPress={() => setRepeatable(false)}>
+              <Text style={[styles.toggleText, !repeatable && styles.toggleTextActive]}>No</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleBtn, repeatable && styles.toggleActive]}
+              onPress={() => setRepeatable(true)}>
+              <Text style={[styles.toggleText, repeatable && styles.toggleTextActive]}>Yes</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Priority */}
+          <Text style={styles.label}>Set Priority</Text>
+          <View style={styles.priorityRow}>
+            {(['low', 'medium', 'high'] as const).map((p) => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.priorityBtn, priority === p && styles[`priority${p.charAt(0).toUpperCase() + p.slice(1)}Active` as keyof typeof styles]]}
+                onPress={() => setPriority(p)}>
+                <Text style={[styles.priorityText, priority === p && styles.priorityTextActive]}>
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Save Button */}
+          <TouchableOpacity
+            style={[styles.createBtn, loading && styles.createBtnDisabled]}
+            onPress={handleSave}
+            disabled={loading}>
+            <Text style={styles.createBtnText}>
+              {loading
+                ? (isEdit ? 'Saving...' : 'Creating...')
+                : (isEdit ? 'Save Changes ✅' : 'Create Chore 🎉')}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Delete Button (only when editing an existing chore) */}
+          {isEdit && (
+            <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={loading}>
               <Text style={styles.deleteBtnText}>Delete Task</Text>
             </TouchableOpacity>
+          )}
 
-          </ScrollView>
-        </TouchableWithoutFeedback>
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {/* Calendar Modal */}
@@ -318,44 +459,44 @@ export default function CreateChoreScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => setCalendarVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => setCalendarVisible(false)}>
-          <View style={styles.calendarOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.calendarCard}>
-                <Text style={styles.calendarTitle}>Choose Due Date 📅</Text>
-                <Calendar
-                  onDayPress={(day: any) => setSelectedDate(day.dateString)}
-                  markedDates={{
-                    [selectedDate]: {
-                      selected: true,
-                      selectedColor: '#4ECDC4',
-                    },
-                  }}
-                  minDate={today}
-                  theme={{
-                    selectedDayBackgroundColor: '#4ECDC4',
-                    selectedDayTextColor: '#fff',
-                    todayTextColor: '#4ECDC4',
-                    arrowColor: '#4ECDC4',
-                    dotColor: '#4ECDC4',
-                    textDayFontWeight: '600',
-                    textMonthFontWeight: '800',
-                  }}
-                />
-                {selectedDate ? (
-                  <View style={styles.calendarFooter}>
-                    <Text style={styles.calendarSelected}>{formatDate(selectedDate)}</Text>
-                    <TouchableOpacity
-                      style={styles.confirmBtn}
-                      onPress={() => setCalendarVisible(false)}>
-                      <Text style={styles.confirmBtnText}>Confirm</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-            </TouchableWithoutFeedback>
+        <View style={styles.calendarOverlay}>
+          {/* Tapping outside the card closes the calendar */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setCalendarVisible(false)} />
+          <View style={styles.calendarCard}>
+            <Text style={styles.calendarTitle}>Choose Due Date 📅</Text>
+            <Calendar
+              current={selectedDate || today}
+              onDayPress={(day: any) => setSelectedDate(day.dateString)}
+              markedDates={selectedDate ? {
+                [selectedDate]: {
+                  selected: true,
+                  selectedColor: '#4ECDC4',
+                },
+              } : {}}
+              minDate={today}
+              theme={{
+                selectedDayBackgroundColor: '#4ECDC4',
+                selectedDayTextColor: '#fff',
+                todayTextColor: '#4ECDC4',
+                arrowColor: '#4ECDC4',
+                dotColor: '#4ECDC4',
+                textDayFontWeight: '600',
+                textMonthFontWeight: '800',
+              }}
+            />
+            <View style={styles.calendarFooter}>
+              <Text style={styles.calendarSelected}>
+                {selectedDate ? formatDate(selectedDate) : 'Pick a day'}
+              </Text>
+              <TouchableOpacity
+                style={[styles.confirmBtn, !selectedDate && { opacity: 0.4 }]}
+                disabled={!selectedDate}
+                onPress={() => setCalendarVisible(false)}>
+                <Text style={styles.confirmBtnText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </Modal>
 
     </SafeAreaView>

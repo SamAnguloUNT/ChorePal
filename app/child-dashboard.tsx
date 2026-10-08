@@ -52,7 +52,22 @@ const isChoreOptional = (chore: any) =>
   chore?.optional === true ||
   chore?.isOptional === true ||
   chore?.required === false ||
-  String(chore?.type ?? '').toLowerCase() === 'optional';
+  String(chore?.type ?? '').toLowerCase() === 'optional' ||
+  String(chore?.choreType ?? '').toLowerCase() === 'optional';
+
+// Deadlines are saved by the parent app as "YYYY-MM-DD" strings (local dates).
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const toLocalDateString = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Firestore Timestamp / Date -> milliseconds
+const toMillis = (v: any): number => {
+  if (!v) return 0;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (v instanceof Date) return v.getTime();
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
+  return 0;
+};
 
 export default function ChildDashboard() {
   const router = useRouter();
@@ -120,11 +135,40 @@ export default function ChildDashboard() {
         const pendingSnap = await getDocs(pendingQuery);
         const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
 
-        choresData = choresData.map(chore => ({
-          ...chore,
-          completed: approvedChoreIds.includes(chore.id) || pendingChoreIds.includes(chore.id),
-          verified: approvedChoreIds.includes(chore.id),
-        }));
+        // Parent feedback: look at approved + rejected submissions and keep the newest
+        // review for each chore (its status and the comment the parent wrote).
+        const rejectedQuery = query(
+          collection(db, 'submissions'),
+          where('childId', '==', child.id),
+          where('status', '==', 'rejected')
+        );
+        const rejectedSnap = await getDocs(rejectedQuery);
+        const latestReview: Record<string, { when: number; status: string; comment: string }> = {};
+        [...approvedSnap.docs, ...rejectedSnap.docs].forEach(d => {
+          const s: any = d.data();
+          const when = Math.max(toMillis(s.approvedAt), toMillis(s.rejectedAt), toMillis(s.submittedAt));
+          const existing = latestReview[s.choreId];
+          if (!existing || when > existing.when) {
+            latestReview[s.choreId] = {
+              when,
+              status: s.status,
+              comment: String(s.parentComment || '').trim(),
+            };
+          }
+        });
+
+        choresData = choresData.map(chore => {
+          const isPending = pendingChoreIds.includes(chore.id);
+          const review = latestReview[chore.id];
+          return {
+            ...chore,
+            completed: approvedChoreIds.includes(chore.id) || isPending,
+            verified: approvedChoreIds.includes(chore.id),
+            // Hide an old note while a newer resubmission is waiting for review
+            feedback: !isPending && review ? review.comment : '',
+            feedbackStatus: !isPending && review ? review.status : null,
+          };
+        });
 
         setChores(choresData);
       }
@@ -194,7 +238,16 @@ export default function ChildDashboard() {
 
   // Order: required chores first, then optional ones. Inside each group, unfinished
   // chores come before finished ones, and higher priority comes first.
-  const sortedChores = [...chores].sort((a, b) => {
+  // The dashboard only shows chores due TODAY, plus overdue chores that still aren't approved
+  // so they don't silently disappear. Future chores live on the Calendar page.
+  const today = toLocalDateString(new Date());
+  const hasDeadline = (c: any) => typeof c.deadline === 'string' && DATE_RE.test(c.deadline);
+  const visibleChores = chores
+    .filter(c => !hasDeadline(c) || c.deadline === today || (c.deadline < today && !c.verified))
+    .map(c => ({ ...c, overdue: hasDeadline(c) && c.deadline < today }));
+  const upcomingCount = chores.filter(c => hasDeadline(c) && c.deadline > today).length;
+
+  const sortedChores = [...visibleChores].sort((a, b) => {
     const optionalDiff = Number(isChoreOptional(a)) - Number(isChoreOptional(b));
     if (optionalDiff !== 0) return optionalDiff;
     const doneDiff = Number(a.completed) - Number(b.completed);
@@ -203,7 +256,7 @@ export default function ChildDashboard() {
   });
 
   // Optional chores are bonus work, so they don't count against daily progress.
-  const requiredChores = chores.filter(c => !isChoreOptional(c));
+  const requiredChores = visibleChores.filter(c => !isChoreOptional(c));
   const completedCount = requiredChores.filter(c => c.completed).length;
   const progress = requiredChores.length > 0 ? completedCount / requiredChores.length : 0;
 
@@ -428,13 +481,17 @@ export default function ChildDashboard() {
         </View>
 
         {/* Chores */}
-        <Text style={styles.sectionTitle}>Your chores</Text>
+        <Text style={styles.sectionTitle}>Today's chores</Text>
         <View style={styles.choresList}>
-          {chores.length === 0 ? (
+          {visibleChores.length === 0 ? (
             <View style={styles.noChores}>
               <Text style={styles.noChoresEmoji}>🎉</Text>
-              <Text style={styles.noChoresText}>No chores yet</Text>
-              <Text style={styles.noChoresHint}>New chores from your parent will show up here.</Text>
+              <Text style={styles.noChoresText}>No chores due today</Text>
+              <Text style={styles.noChoresHint}>
+                {upcomingCount > 0
+                  ? `You have ${upcomingCount} chore${upcomingCount === 1 ? '' : 's'} coming up. Check the Calendar!`
+                  : 'New chores from your parent will show up here.'}
+              </Text>
             </View>
           ) : (
             sortedChores.map((chore, index) => {
@@ -490,6 +547,16 @@ export default function ChildDashboard() {
                               <Text style={[styles.chipText, { color: '#7B61FF' }]}>Optional</Text>
                             </View>
                           )}
+                          {chore.overdue && !chore.completed && (
+                            <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
+                              <Text style={[styles.chipText, { color: '#E63946' }]}>Overdue</Text>
+                            </View>
+                          )}
+                          {chore.feedbackStatus === 'rejected' && !chore.completed && (
+                            <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
+                              <Text style={[styles.chipText, { color: '#E63946' }]}>Please redo</Text>
+                            </View>
+                          )}
                           {chore.completed && (
                             <View style={[styles.chip, { backgroundColor: chore.verified ? '#E0FFF4' : '#FFF3CD' }]}>
                               <Text style={[styles.chipText, { color: chore.verified ? '#2A9D8F' : '#B7791F' }]}>
@@ -498,6 +565,11 @@ export default function ChildDashboard() {
                             </View>
                           )}
                         </View>
+                        {!!chore.feedback && (
+                          <Text style={styles.feedbackLine} numberOfLines={2}>
+                            💬 {chore.feedback}
+                          </Text>
+                        )}
                       </View>
 
                       {/* Text-to-speech: read the chore aloud */}
@@ -527,6 +599,12 @@ export default function ChildDashboard() {
         <TouchableOpacity style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Chores</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => router.replace('/child-calendar')}>
+          <Text style={styles.navEmoji}>📅</Text>
+          <Text style={styles.navText}>Calendar</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.navItem}
@@ -689,6 +767,24 @@ export default function ChildDashboard() {
                         {selectedChore.description || 'No description provided.'}
                       </Text>
                     </View>
+
+                    {/* Comment the parent left when they reviewed this chore */}
+                    {!!selectedChore.feedback && (
+                      <View style={styles.feedbackBox}>
+                        <View style={styles.descriptionHeader}>
+                          <Text style={styles.descriptionLabel}>
+                            {selectedChore.feedbackStatus === 'rejected'
+                              ? 'PARENT FEEDBACK - PLEASE REDO'
+                              : 'MESSAGE FROM YOUR PARENT'}
+                          </Text>
+                          <TextToSpeech
+                            text={`Your parent says: ${selectedChore.feedback}`}
+                            size={28}
+                          />
+                        </View>
+                        <Text style={styles.descriptionText}>{selectedChore.feedback}</Text>
+                      </View>
+                    )}
                   </>
                 )}
 
@@ -925,6 +1021,17 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   actionBtnText: { fontSize: 22 },
+
+  // Parent feedback
+  feedbackLine: { marginTop: 8, fontSize: 13, color: '#12756D', fontStyle: 'italic', lineHeight: 18 },
+  feedbackBox: {
+    backgroundColor: '#FFF8E1',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#F4B942',
+  },
 
   // Bottom nav
   bottomNav: {

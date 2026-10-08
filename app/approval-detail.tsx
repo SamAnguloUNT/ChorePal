@@ -1,18 +1,16 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
-  Keyboard,
   KeyboardAvoidingView, Platform,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View
 } from 'react-native';
 import { db } from '../config/firebase';
@@ -37,6 +35,7 @@ export default function ApprovalDetailScreen() {
   const [loading, setLoading] = useState(false);
   const [photoURL, setPhotoURL] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(true);
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const loadSubmission = async () => {
@@ -89,7 +88,7 @@ export default function ApprovalDetailScreen() {
               // Update submission status
               await updateDoc(doc(db, 'submissions', id as string), {
                 status: 'approved',
-                parentComment: comment,
+                parentComment: comment.trim(),
                 approvedAt: new Date(),
               });
 
@@ -103,8 +102,8 @@ export default function ApprovalDetailScreen() {
                 await sendPushNotification(
                   childDoc.data()?.pushToken || null,
                   '🎉 Chore Approved!',
-                  `Your parent approved "${choreTitle}"! You earned ${choreCoins} coins!`,
-                  { type: 'chore_approved' }
+                  `Your parent approved "${choreTitle}"! You earned ${choreCoins} coins!${comment.trim() ? ` Parent says: "${comment.trim()}"` : ''}`,
+                  { type: 'chore_approved', comment: comment.trim() }
                 );
               } catch (notifError) {
                 console.log('Notification error:', notifError);
@@ -139,7 +138,7 @@ export default function ApprovalDetailScreen() {
 
               await updateDoc(doc(db, 'submissions', id as string), {
                 status: 'rejected',
-                parentComment: comment,
+                parentComment: comment.trim(),
                 rejectedAt: new Date(),
               });
 
@@ -149,8 +148,8 @@ export default function ApprovalDetailScreen() {
                 await sendPushNotification(
                   childDoc?.data()?.pushToken || null,
                   '❌ Chore Rejected',
-                  `Your parent rejected "${choreTitle}". Please redo the chore and resubmit!`,
-                  { type: 'chore_rejected' }
+                  `Your parent rejected "${choreTitle}". Please redo the chore and resubmit!${comment.trim() ? ` Parent says: "${comment.trim()}"` : ''}`,
+                  { type: 'chore_rejected', comment: comment.trim() }
                 );
               } catch (notifError) {
                 console.log('Notification error:', notifError);
@@ -186,8 +185,12 @@ export default function ApprovalDetailScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.inner}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.scroll, { paddingBottom: 120 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          showsVerticalScrollIndicator={false}>
 
             {/* Header */}
             <View style={styles.header}>
@@ -279,6 +282,7 @@ export default function ApprovalDetailScreen() {
               onChangeText={setComment}
               multiline
               numberOfLines={3}
+              onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
               textAlignVertical="top"
             />
 
@@ -301,7 +305,6 @@ export default function ApprovalDetailScreen() {
             </View>
 
           </ScrollView>
-        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

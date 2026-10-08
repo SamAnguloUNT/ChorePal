@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useState } from 'react';
 import {
@@ -28,6 +28,7 @@ export default function ParentLoginScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -42,6 +43,32 @@ export default function ParentLoginScreen() {
       Alert.alert('Login Failed!', error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      Alert.alert('Enter your email', 'Type your email address above, then tap Forgot Password again.');
+      return;
+    }
+    try {
+      setResetLoading(true);
+      await sendPasswordResetEmail(auth, trimmed);
+      Alert.alert(
+        'Check your email!',
+        'If an account exists for that address, a password reset link is on its way. Check your spam folder too.'
+      );
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-email') {
+        Alert.alert('Invalid email', 'Please enter a valid email address.');
+      } else if (error.code === 'auth/too-many-requests') {
+        Alert.alert('Slow down', 'Too many attempts. Please try again later.');
+      } else {
+        Alert.alert('Error!', error.message);
+      }
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -153,8 +180,13 @@ export default function ParentLoginScreen() {
                   {loading ? 'Logging in...' : 'Log In'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.forgotBtn}>
-                <Text style={styles.forgotText}>Forgot Password?</Text>
+              <TouchableOpacity
+                style={styles.forgotBtn}
+                onPress={handleForgotPassword}
+                disabled={resetLoading}>
+                <Text style={styles.forgotText}>
+                  {resetLoading ? 'Sending...' : 'Forgot Password?'}
+                </Text>
               </TouchableOpacity>
               <View style={styles.dividerContainer}>
                 <View style={styles.dividerLine} />

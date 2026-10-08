@@ -1,9 +1,9 @@
-import { useRouter } from 'expo-router';
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -22,8 +22,19 @@ const EMOJI_OPTIONS = [
   '🚗', '✈️', '🏖️', '🎡', '🎁', '💰', '🦄', '🌈',
 ];
 
+// Highest number of coins a single reward can cost. Change this one number to adjust the limit.
+const MAX_COINS = 1000;
+
 export default function CreateRewardScreen() {
   const router = useRouter();
+
+  // When opened from the rewards list with an id, this screen edits that reward instead of creating one
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const editId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const isEdit = !!editId;
+
+  const scrollRef = useRef<ScrollView>(null);
+  const descriptionY = useRef(0);
 
   const [title, setTitle] = useState('');
   const [coins, setCoins] = useState('');
@@ -33,6 +44,7 @@ export default function CreateRewardScreen() {
   const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
   const [emojiModalVisible, setEmojiModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(isEdit);
   const [children, setChildren] = useState<any[]>([]);
 
   // Load real children from Firestore
@@ -55,15 +67,75 @@ export default function CreateRewardScreen() {
     loadChildren();
   }, []);
 
+  // Edit mode: load the existing reward into the form
+  useEffect(() => {
+    if (!editId) return;
+    const loadReward = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'rewards', editId));
+        if (!snap.exists()) {
+          Alert.alert('Error!', 'This reward could not be found.', [
+            { text: 'OK', onPress: () => router.back() }
+          ]);
+          return;
+        }
+        const d: any = snap.data();
+        setTitle(d.title ?? '');
+        setCoins(d.coinCost !== undefined && d.coinCost !== null ? String(d.coinCost) : '');
+        setDescription(d.description ?? '');
+        setSelectedEmoji(d.emoji || '🎁');
+        if (d.availableTo && d.availableTo !== 'all') {
+          setAssignTo('specific');
+          setSelectedChildren([d.availableTo]);
+        } else {
+          setAssignTo('all');
+        }
+      } catch (error: any) {
+        Alert.alert('Error!', error.message);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    loadReward();
+  }, [editId]);
+
   const toggleChild = (id: string) => {
+    if (isEdit) {
+      // An existing reward belongs to exactly one child (or all), so only allow one selection
+      setSelectedChildren([id]);
+      return;
+    }
     setSelectedChildren(prev =>
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     );
   };
 
-  const handleCreate = async () => {
-    if (!title) { Alert.alert('Missing!', 'Please enter a reward title!'); return; }
-    if (!coins) { Alert.alert('Missing!', 'Please enter coin cost!'); return; }
+  // Scroll the description box above the keyboard when it is focused
+  const scrollToDescription = () => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, descriptionY.current - 100), animated: true });
+    }, 300);
+  };
+
+  // Keep only digits and never allow more than MAX_COINS
+  const handleCoinsChange = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, '');
+    if (!digits) { setCoins(''); return; }
+    setCoins(String(Math.min(parseInt(digits, 10), MAX_COINS)));
+  };
+
+  const changeCoins = (delta: number) => {
+    setCoins(prev => {
+      const current = parseInt(prev || '0', 10) || 0;
+      return String(Math.min(MAX_COINS, Math.max(0, current + delta)));
+    });
+  };
+
+  const handleSave = async () => {
+    const coinsNum = parseInt(coins, 10);
+    if (!title.trim()) { Alert.alert('Missing!', 'Please enter a reward title!'); return; }
+    if (!coinsNum || coinsNum < 1) { Alert.alert('Missing!', 'Please enter coin cost!'); return; }
+    if (coinsNum > MAX_COINS) { Alert.alert('Too many coins!', `A reward can cost at most ${MAX_COINS} coins.`); return; }
     if (assignTo === 'specific' && selectedChildren.length === 0) {
       Alert.alert('Missing!', 'Please select at least one child!'); return;
     }
@@ -76,14 +148,32 @@ export default function CreateRewardScreen() {
         return;
       }
 
+      const rewardData = {
+        title: title.trim(),
+        emoji: selectedEmoji,
+        coinCost: coinsNum,
+        description,
+      };
+
+      if (isEdit && editId) {
+        // Update the existing reward (keeps its owner and created date)
+        await updateDoc(doc(db, 'rewards', editId), {
+          ...rewardData,
+          availableTo: assignTo === 'all' ? 'all' : selectedChildren[0],
+          updatedAt: new Date(),
+        });
+
+        Alert.alert('Reward Updated! ✅', `"${title.trim()}" has been saved.`, [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+        return;
+      }
+
       if (assignTo === 'specific') {
         // Create a reward for each selected child
         for (const childId of selectedChildren) {
           await addDoc(collection(db, 'rewards'), {
-            title,
-            emoji: selectedEmoji,
-            coinCost: parseInt(coins),
-            description,
+            ...rewardData,
             availableTo: childId,
             redeemed: false,
             parentId: user.uid,
@@ -93,10 +183,7 @@ export default function CreateRewardScreen() {
       } else {
         // Create one reward available to all children
         await addDoc(collection(db, 'rewards'), {
-          title,
-          emoji: selectedEmoji,
-          coinCost: parseInt(coins),
-          description,
+          ...rewardData,
           availableTo: 'all',
           redeemed: false,
           parentId: user.uid,
@@ -104,7 +191,7 @@ export default function CreateRewardScreen() {
         });
       }
 
-      Alert.alert('Reward Created! 🎉', `"${title}" has been added to the rewards catalog!`, [
+      Alert.alert('Reward Created! 🎉', `"${title.trim()}" has been added to the rewards catalog!`, [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error: any) {
@@ -114,68 +201,110 @@ export default function CreateRewardScreen() {
     }
   };
 
+  const handleDelete = () => {
+    if (!editId) return;
+    Alert.alert('Delete Reward?', `Are you sure you want to delete "${title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setLoading(true);
+            await deleteDoc(doc(db, 'rewards', editId));
+            router.back();
+          } catch (error: any) {
+            Alert.alert('Error!', error.message);
+          } finally {
+            setLoading(false);
+          }
+        }
+      }
+    ]);
+  };
+
+  if (isEdit && initialLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.inner}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.content, { paddingBottom: 120 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          showsVerticalScrollIndicator={false}>
 
-            {/* Back */}
-            <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-              <Text style={styles.backText}>← Back</Text>
-            </TouchableOpacity>
+          {/* Back */}
+          <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
 
-            {/* Title */}
-            <Text style={styles.pageTitle}>Create Reward ⭐</Text>
+          {/* Title */}
+          <Text style={styles.pageTitle}>{isEdit ? 'Edit Reward ✏️' : 'Create Reward ⭐'}</Text>
 
-            {/* Emoji Picker */}
-            <Text style={styles.label}>Reward Icon</Text>
+          {/* Emoji Picker */}
+          <Text style={styles.label}>Reward Icon</Text>
+          <TouchableOpacity
+            style={styles.emojiPickerBtn}
+            onPress={() => setEmojiModalVisible(true)}>
+            <Text style={styles.selectedEmoji}>{selectedEmoji}</Text>
+            <Text style={styles.emojiPickerText}>Tap to change</Text>
+            <Text style={styles.emojiArrow}>›</Text>
+          </TouchableOpacity>
+
+          {/* Reward Title */}
+          <Text style={styles.label}>Reward Title</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. 1 Hour Screen Time"
+            placeholderTextColor="#aaa"
+            value={title}
+            onChangeText={setTitle}
+            autoCapitalize="words"
+          />
+
+          {/* Coin Cost */}
+          <Text style={styles.label}>Coin Cost 🪙</Text>
+          <View style={styles.coinsContainer}>
             <TouchableOpacity
-              style={styles.emojiPickerBtn}
-              onPress={() => setEmojiModalVisible(true)}>
-              <Text style={styles.selectedEmoji}>{selectedEmoji}</Text>
-              <Text style={styles.emojiPickerText}>Tap to change</Text>
-              <Text style={styles.emojiArrow}>›</Text>
+              style={styles.coinBtn}
+              onPress={() => changeCoins(-1)}>
+              <Text style={styles.coinBtnText}>−</Text>
             </TouchableOpacity>
-
-            {/* Reward Title */}
-            <Text style={styles.label}>Reward Title</Text>
             <TextInput
-              style={styles.input}
-              placeholder="e.g. 1 Hour Screen Time"
+              style={styles.coinsInput}
+              placeholder="0"
               placeholderTextColor="#aaa"
-              value={title}
-              onChangeText={setTitle}
-              autoCapitalize="words"
+              value={coins}
+              onChangeText={handleCoinsChange}
+              keyboardType="number-pad"
+              maxLength={String(MAX_COINS).length}
+              textAlign="center"
             />
+            <TouchableOpacity
+              style={styles.coinBtn}
+              onPress={() => changeCoins(1)}>
+              <Text style={styles.coinBtnText}>+</Text>
+            </TouchableOpacity>
+          </View>
 
-            {/* Coin Cost */}
-            <Text style={styles.label}>Coin Cost 🪙</Text>
-            <View style={styles.coinsContainer}>
-              <TouchableOpacity
-                style={styles.coinBtn}
-                onPress={() => setCoins(prev => String(Math.max(0, parseInt(prev || '0') - 1)))}>
-                <Text style={styles.coinBtnText}>−</Text>
-              </TouchableOpacity>
-              <TextInput
-                style={styles.coinsInput}
-                placeholder="0"
-                placeholderTextColor="#aaa"
-                value={coins}
-                onChangeText={setCoins}
-                keyboardType="number-pad"
-                textAlign="center"
-              />
-              <TouchableOpacity
-                style={styles.coinBtn}
-                onPress={() => setCoins(prev => String(parseInt(prev || '0') + 1))}>
-                <Text style={styles.coinBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
+          <Text style={{ fontSize: 12, color: '#aaa', marginTop: -12, marginBottom: 16, fontStyle: 'italic' }}>
+            Maximum {MAX_COINS} coins per reward
+          </Text>
 
-            {/* Description */}
+          {/* Description */}
+          <View onLayout={(e) => { descriptionY.current = e.nativeEvent.layout.y; }}>
             <Text style={styles.label}>Description (optional)</Text>
             <TextInput
               style={styles.textArea}
@@ -183,87 +312,92 @@ export default function CreateRewardScreen() {
               placeholderTextColor="#aaa"
               value={description}
               onChangeText={setDescription}
+              onFocus={scrollToDescription}
               multiline
               numberOfLines={3}
               textAlignVertical="top"
             />
+          </View>
 
-            {/* Available To */}
-            <Text style={styles.label}>Available To</Text>
-            <View style={styles.toggleRow}>
-              <TouchableOpacity
-                style={[styles.toggleBtn, assignTo === 'all' && styles.toggleActive]}
-                onPress={() => setAssignTo('all')}>
-                <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>
-                  All Children
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleBtn, assignTo === 'specific' && styles.toggleActive]}
-                onPress={() => setAssignTo('specific')}>
-                <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>
-                  Specific Child
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Child Selector — real children */}
-            {assignTo === 'specific' && (
-              <View style={styles.childSelector}>
-                {children.length === 0 ? (
-                  <Text style={styles.noChildrenText}>No children added yet!</Text>
-                ) : (
-                  children.map(child => (
-                    <TouchableOpacity
-                      key={child.id}
-                      style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
-                      onPress={() => toggleChild(child.id)}>
-                      <Text style={styles.childChipEmoji}>{child.avatar}</Text>
-                      <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
-                        {child.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            )}
-
-            {/* Preview Card */}
-            <Text style={styles.label}>Preview</Text>
-            <View style={styles.previewCard}>
-              <View style={styles.previewLeft}>
-                <View style={styles.previewEmojiBox}>
-                  <Text style={styles.previewEmoji}>{selectedEmoji}</Text>
-                </View>
-                <View>
-                  <Text style={styles.previewTitle}>{title || 'Reward Title'}</Text>
-                  <View style={styles.previewCoins}>
-                    <Text style={styles.previewCoinsText}>🪙 {coins || '0'} coins</Text>
-                  </View>
-                </View>
-              </View>
-              <TouchableOpacity style={styles.previewBtn}>
-                <Text style={styles.previewBtnText}>BUY REWARD</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Create Button */}
+          {/* Available To */}
+          <Text style={styles.label}>Available To</Text>
+          <View style={styles.toggleRow}>
             <TouchableOpacity
-              style={[styles.createBtn, loading && styles.createBtnDisabled]}
-              onPress={handleCreate}
-              disabled={loading}>
-              <Text style={styles.createBtnText}>
-                {loading ? 'Creating...' : 'Create Reward 🎉'}
+              style={[styles.toggleBtn, assignTo === 'all' && styles.toggleActive]}
+              onPress={() => setAssignTo('all')}>
+              <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>
+                All Children
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleBtn, assignTo === 'specific' && styles.toggleActive]}
+              onPress={() => setAssignTo('specific')}>
+              <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>
+                Specific Child
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            {/* Delete Button */}
-            <TouchableOpacity style={styles.deleteBtn}>
+          {/* Child Selector — real children */}
+          {assignTo === 'specific' && (
+            <View style={styles.childSelector}>
+              {children.length === 0 ? (
+                <Text style={styles.noChildrenText}>No children added yet!</Text>
+              ) : (
+                children.map(child => (
+                  <TouchableOpacity
+                    key={child.id}
+                    style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
+                    onPress={() => toggleChild(child.id)}>
+                    <Text style={styles.childChipEmoji}>{child.avatar}</Text>
+                    <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
+                      {child.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
+
+          {/* Preview Card */}
+          <Text style={styles.label}>Preview</Text>
+          <View style={styles.previewCard}>
+            <View style={styles.previewLeft}>
+              <View style={styles.previewEmojiBox}>
+                <Text style={styles.previewEmoji}>{selectedEmoji}</Text>
+              </View>
+              <View>
+                <Text style={styles.previewTitle}>{title || 'Reward Title'}</Text>
+                <View style={styles.previewCoins}>
+                  <Text style={styles.previewCoinsText}>🪙 {coins || '0'} coins</Text>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.previewBtn}>
+              <Text style={styles.previewBtnText}>BUY REWARD</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Save Button */}
+          <TouchableOpacity
+            style={[styles.createBtn, loading && styles.createBtnDisabled]}
+            onPress={handleSave}
+            disabled={loading}>
+            <Text style={styles.createBtnText}>
+              {loading
+                ? (isEdit ? 'Saving...' : 'Creating...')
+                : (isEdit ? 'Save Changes ✅' : 'Create Reward 🎉')}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Delete Button (only when editing an existing reward) */}
+          {isEdit && (
+            <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={loading}>
               <Text style={styles.deleteBtnText}>Delete Reward</Text>
             </TouchableOpacity>
+          )}
 
-          </ScrollView>
-        </TouchableWithoutFeedback>
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {/* Emoji Picker Modal */}
