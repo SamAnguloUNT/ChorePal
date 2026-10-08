@@ -105,7 +105,7 @@ export default function RootLayout() {
       <Stack.Screen
         name="add-child"
         options={{
-          animation: 'fade_from_bottom',
+          animation: 'fade',
           presentation: 'card',
         }}
       />
@@ -113,7 +113,11 @@ export default function RootLayout() {
       {/* ========== Other Screens ========== */}
       <Stack.Screen
         name="family-code"
-        options={{ animation: 'fade_from_bottom' }}
+        options={{ animation: 'fade' }}
+      />
+      <Stack.Screen
+        name="child-calendar"
+        options={{ animation: 'fade' }}
       />
       <Stack.Screen
         name="approvals"
@@ -125,19 +129,23 @@ export default function RootLayout() {
       />
       <Stack.Screen
         name="child-rewards"
-        options={{ animation: 'fade_from_bottom' }}
+        options={{ animation: 'fade' }}
       />
       <Stack.Screen
         name="chore-list"
-        options={{ animation: 'fade_from_bottom' }}
+        options={{ animation: 'fade' }}
       />
       <Stack.Screen
         name="rewards-list"
-        options={{ animation: 'fade_from_bottom' }}
+        options={{ animation: 'fade' }}
       />
       <Stack.Screen
         name="settings"
-        options={{ animation: 'fade_from_bottom' }}
+        options={{ animation: 'fade' }}
+      />
+      <Stack.Screen
+        name="child-details"
+        options={{ animation: 'fade' }}
       />
       <Stack.Screen
         name="discipline"

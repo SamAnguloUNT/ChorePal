@@ -313,6 +313,12 @@ export default function ChildRewardsScreen() {
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={styles.navText}>Chores</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.navItem}
+          onPress={() => router.replace('/child-calendar')}>
+          <Text style={styles.navEmoji}>📅</Text>
+          <Text style={styles.navText}>Calendar</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Rewards</Text>

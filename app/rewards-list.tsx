@@ -108,7 +108,7 @@ export default function RewardsListScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: '✏️ Edit',
-          onPress: () => router.push('/create-reward')
+          onPress: () => router.push({ pathname: '/create-reward', params: { id: reward.id } })
         },
         {
           text: '🗑️ Delete',
