@@ -2,10 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   Modal,
   SafeAreaView, ScrollView,
@@ -14,6 +16,8 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
+import Celebration from '../components/Celebration';
+import FloatingBackground from '../components/FloatingBackground';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
 import { registerForPushNotifications, sendPushNotification } from '../utils/notifications';
@@ -69,6 +73,39 @@ const toMillis = (v: any): number => {
   return 0;
 };
 
+// DECLUTTER: each chore card shows at most ONE status chip instead of up to five.
+// Most important message wins: approved > waiting > redo > overdue.
+const getStatusChip = (chore: any) => {
+  if (chore.verified) return { label: '✓ Approved', bg: '#E0FFF4', color: '#2A9D8F' };
+  if (chore.completed) return { label: '⏳ Waiting', bg: '#FFF3CD', color: '#B7791F' };
+  if (chore.feedbackStatus === 'rejected') return { label: 'Please redo', bg: '#FFE5E5', color: '#E63946' };
+  if (chore.overdue) return { label: 'Overdue', bg: '#FFE5E5', color: '#E63946' };
+  return null;
+};
+
+// Chore card that slides up and fades in, one after another.
+function AnimatedEntry({ index, children }: { index: number; children: React.ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 450,
+      delay: Math.min(index, 8) * 90,
+      easing: Easing.out(Easing.back(1.2)),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) }],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
+
 export default function ChildDashboard() {
   const router = useRouter();
   const [childData, setChildData] = useState<any>(null);
@@ -81,6 +118,35 @@ export default function ChildDashboard() {
   const [submitted, setSubmitted] = useState(false);
   const [disciplineNotification, setDisciplineNotification] = useState<any>(null);
   const [disciplineModalVisible, setDisciplineModalVisible] = useState(false);
+
+  // ---- Animations ----
+  // Avatar bobs up and down, coin wobbles, progress bar fills smoothly.
+  const bob = useRef(new Animated.Value(0)).current;
+  const wobble = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const bobLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    const wobbleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(wobble, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(wobble, { toValue: -1, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(wobble, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.delay(1500),
+      ])
+    );
+    bobLoop.start();
+    wobbleLoop.start();
+    return () => {
+      bobLoop.stop();
+      wobbleLoop.stop();
+    };
+  }, [bob, wobble]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -260,6 +326,16 @@ export default function ChildDashboard() {
   const completedCount = requiredChores.filter(c => c.completed).length;
   const progress = requiredChores.length > 0 ? completedCount / requiredChores.length : 0;
 
+  // Smoothly animate the progress bar whenever progress changes.
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: progress,
+      duration: 800,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false, // width can't use the native driver
+    }).start();
+  }, [progress, progressAnim]);
+
   // Home reminders: "Welcome home, you have N chores" on arrival, and
   // "Don't forget your chores" on leaving. Foreground-only (works in Expo Go).
   // `homeLocation` is copied onto the child doc by the parent app.
@@ -412,15 +488,22 @@ export default function ChildDashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Fun animated background: floating stars, bubbles and coins (behind everything) */}
+      <FloatingBackground />
+
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Hero: greeting, log out, and daily progress in one place */}
+        {/* Hero: greeting, coins, and progress. The old stats row was merged in here. */}
         <View style={styles.hero}>
           <View style={styles.heroTopRow}>
             <View style={styles.profileSection}>
-              <View style={styles.profileCircle}>
+              <Animated.View
+                style={[
+                  styles.profileCircle,
+                  { transform: [{ translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }] },
+                ]}>
                 <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
-              </View>
+              </Animated.View>
               <View style={styles.heroNameBlock}>
                 <Text style={styles.heroGreeting} numberOfLines={1}>
                   Hi, {childData?.name || 'there'}!
@@ -436,14 +519,26 @@ export default function ChildDashboard() {
                 </Text>
               </View>
             </View>
+            {/* Small icon-only log out so it stops competing with the content */}
             <TouchableOpacity
               style={styles.logoutBtn}
               onPress={handleLogout}
               accessibilityRole="button"
               accessibilityLabel="Log out">
               <Text style={styles.logoutBtnEmoji}>🚪</Text>
-              <Text style={styles.logoutBtnText}>Log out</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.coinPill}>
+            <Animated.Text
+              style={[
+                styles.coinPillEmoji,
+                { transform: [{ rotate: wobble.interpolate({ inputRange: [-1, 1], outputRange: ['-18deg', '18deg'] }) }] },
+              ]}>
+              🪙
+            </Animated.Text>
+            <Text style={styles.coinPillValue}>{childData?.coinBalance || 0}</Text>
+            <Text style={styles.coinPillLabel}>coins</Text>
           </View>
 
           <View>
@@ -452,31 +547,17 @@ export default function ChildDashboard() {
               <Text style={styles.heroProgressCount}>
                 {requiredChores.length === 0
                   ? '-'
-                  : `${completedCount} of ${requiredChores.length} done`}
+                  : `${completedCount} of ${requiredChores.length}`}
               </Text>
             </View>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+              <Animated.View
+                style={[
+                  styles.progressBarFill,
+                  { width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+                ]}
+              />
             </View>
-          </View>
-        </View>
-
-        {/* Quick stats */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statTile, styles.statTileCoins]}>
-            <Text style={styles.statEmoji}>🪙</Text>
-            <Text style={styles.statValue}>{childData?.coinBalance || 0}</Text>
-            <Text style={styles.statLabel}>Coins</Text>
-          </View>
-          <View style={styles.statTile}>
-            <Text style={styles.statEmoji}>📋</Text>
-            <Text style={styles.statValue}>{todoCount}</Text>
-            <Text style={styles.statLabel}>To do</Text>
-          </View>
-          <View style={styles.statTile}>
-            <Text style={styles.statEmoji}>✅</Text>
-            <Text style={styles.statValue}>{completedCount}</Text>
-            <Text style={styles.statLabel}>Done</Text>
           </View>
         </View>
 
@@ -497,6 +578,8 @@ export default function ChildDashboard() {
             sortedChores.map((chore, index) => {
               const priority = getPriorityInfo(chore.priority);
               const optional = isChoreOptional(chore);
+              const statusChip = getStatusChip(chore);
+              // Priority is shown only by the stripe color now (no extra chip).
               const stripeColor = chore.completed
                 ? '#C9D6D4'
                 : optional
@@ -506,86 +589,57 @@ export default function ChildDashboard() {
                 <Fragment key={chore.id}>
                   {/* Section header shown once, right before the first optional chore */}
                   {optional && (index === 0 || !isChoreOptional(sortedChores[index - 1])) && (
-                    <Text style={styles.optionalHeader}>⭐ Bonus chores (optional)</Text>
+                    <Text style={styles.optionalHeader}>⭐ Bonus chores</Text>
                   )}
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => openVerification(chore)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open chore: ${chore.title}`}
-                    style={[styles.choreCard, chore.completed && styles.choreCardDone]}>
-                    <View style={[styles.priorityStripe, { backgroundColor: stripeColor }]} />
-                    <View style={styles.choreBody}>
-                      <View style={[
-                        styles.statusCircle,
-                        chore.completed && !chore.verified && styles.statusPending,
-                        chore.verified && styles.statusDone,
-                      ]}>
-                        {chore.verified && <Text style={styles.statusMark}>✓</Text>}
-                        {chore.completed && !chore.verified && <Text style={styles.statusPendingMark}>⏳</Text>}
-                      </View>
-
-                      <View style={styles.choreTextBlock}>
-                        <Text
-                          style={[styles.choreTitle, chore.completed && styles.choreTitleDone]}
-                          numberOfLines={2}>
-                          {chore.title}
-                        </Text>
-                        <View style={styles.chipRow}>
-                          <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
-                            <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {chore.coins ?? 0}</Text>
-                          </View>
-                          {priority && (
-                            <View style={[styles.chip, { backgroundColor: priority.bg }]}>
-                              <Text style={[styles.chipText, { color: priority.color }]}>
-                                {priority.emoji} {priority.label.replace(' Priority', '')}
-                              </Text>
-                            </View>
-                          )}
-                          {optional && (
-                            <View style={[styles.chip, { backgroundColor: '#EFEAFF' }]}>
-                              <Text style={[styles.chipText, { color: '#7B61FF' }]}>Optional</Text>
-                            </View>
-                          )}
-                          {chore.overdue && !chore.completed && (
-                            <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
-                              <Text style={[styles.chipText, { color: '#E63946' }]}>Overdue</Text>
-                            </View>
-                          )}
-                          {chore.feedbackStatus === 'rejected' && !chore.completed && (
-                            <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
-                              <Text style={[styles.chipText, { color: '#E63946' }]}>Please redo</Text>
-                            </View>
-                          )}
-                          {chore.completed && (
-                            <View style={[styles.chip, { backgroundColor: chore.verified ? '#E0FFF4' : '#FFF3CD' }]}>
-                              <Text style={[styles.chipText, { color: chore.verified ? '#2A9D8F' : '#B7791F' }]}>
-                                {chore.verified ? 'Approved' : 'Waiting for approval'}
-                              </Text>
-                            </View>
-                          )}
+                  <AnimatedEntry index={index}>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => openVerification(chore)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open chore: ${chore.title}`}
+                      style={[styles.choreCard, chore.completed && styles.choreCardDone]}>
+                      <View style={[styles.priorityStripe, { backgroundColor: stripeColor }]} />
+                      <View style={styles.choreBody}>
+                        <View style={[
+                          styles.statusCircle,
+                          chore.completed && !chore.verified && styles.statusPending,
+                          chore.verified && styles.statusDone,
+                        ]}>
+                          {chore.verified && <Text style={styles.statusMark}>✓</Text>}
+                          {chore.completed && !chore.verified && <Text style={styles.statusPendingMark}>⏳</Text>}
                         </View>
-                        {!!chore.feedback && (
-                          <Text style={styles.feedbackLine} numberOfLines={2}>
-                            💬 {chore.feedback}
+
+                        <View style={styles.choreTextBlock}>
+                          <Text
+                            style={[styles.choreTitle, chore.completed && styles.choreTitleDone]}
+                            numberOfLines={2}>
+                            {chore.title}
                           </Text>
-                        )}
-                      </View>
-
-                      {/* Text-to-speech: read the chore aloud */}
-                      <TextToSpeech
-                        text={`${chore.title}. It's worth ${chore.coins ?? 0} coins.`}
-                        size={24}
-                      />
-
-                      {!chore.completed && (
-                        // Visual hint only: the whole card is tappable.
-                        <View style={styles.actionBtn}>
-                          <Text style={styles.actionBtnText}>📸</Text>
+                          <View style={styles.chipRow}>
+                            <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
+                              <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {chore.coins ?? 0}</Text>
+                            </View>
+                            {statusChip && (
+                              <View style={[styles.chip, { backgroundColor: statusChip.bg }]}>
+                                <Text style={[styles.chipText, { color: statusChip.color }]}>{statusChip.label}</Text>
+                              </View>
+                            )}
+                          </View>
+                          {!!chore.feedback && (
+                            <Text style={styles.feedbackLine} numberOfLines={1}>
+                              💬 {chore.feedback}
+                            </Text>
+                          )}
                         </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
+
+                        {/* Text-to-speech: read the chore aloud */}
+                        <TextToSpeech
+                          text={`${chore.title}. It's worth ${chore.coins ?? 0} coins.`}
+                          size={24}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  </AnimatedEntry>
                 </Fragment>
               );
             })
@@ -876,6 +930,12 @@ export default function ChildDashboard() {
                 </ScrollView>
               </View>
             </TouchableWithoutFeedback>
+
+            {/* Confetti burst when the chore was sent to the parent. Plays once, then
+                disappears when the child closes the popup (submitted resets to false). */}
+            {submitted && (
+              <Celebration source={require('../assets/images/confetti.json')} />
+            )}
           </View>
         </TouchableWithoutFeedback>
       </Modal>
@@ -885,74 +945,72 @@ export default function ChildDashboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3FBF9' },
+  // Softer sky-to-mint feel; the floating background shows through.
+  container: { flex: 1, backgroundColor: '#EAF9F6' },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
 
   // Hero
   hero: {
     backgroundColor: '#0F7F76',
-    borderRadius: 28,
+    borderRadius: 32,
     padding: 20,
-    gap: 20,
-    marginBottom: 14,
+    gap: 16,
+    marginBottom: 18,
     shadowColor: '#0F7F76',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 14,
     elevation: 6,
   },
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   profileSection: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   profileCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileEmoji: { fontSize: 32 },
+  profileEmoji: { fontSize: 34 },
   heroNameBlock: { flexShrink: 1 },
-  heroGreeting: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
+  heroGreeting: { fontSize: 26, fontWeight: '900', color: '#FFFFFF' },
   heroSub: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.88)', marginTop: 2 },
   logoutBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutBtnEmoji: { fontSize: 18 },
+
+  // Coin balance (replaces the old 3-tile stats row)
+  coinPill: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 12,
+    gap: 8,
+    backgroundColor: '#FFF4D6',
+    borderRadius: 20,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    minHeight: 40,
   },
-  logoutBtnEmoji: { fontSize: 15 },
-  logoutBtnText: { fontSize: 13, fontWeight: '800', color: '#C62828' },
+  coinPillEmoji: { fontSize: 22 },
+  coinPillValue: { fontSize: 22, fontWeight: '900', color: '#B7791F' },
+  coinPillLabel: { fontSize: 13, fontWeight: '700', color: '#B7791F' },
+
   heroProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 },
   heroProgressLabel: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   heroProgressCount: { fontSize: 14, fontWeight: '800', color: '#FFD479' },
   progressBarBg: {
-    height: 14,
+    height: 16,
     backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 7,
+    borderRadius: 8,
     overflow: 'hidden',
   },
-  progressBarFill: { height: 14, backgroundColor: '#F4B942', borderRadius: 7 },
-
-  // Stats
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  statTile: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#DDF1EE',
-  },
-  statTileCoins: { backgroundColor: '#FFF4D6', borderColor: '#F4B942' },
-  statEmoji: { fontSize: 22 },
-  statValue: { fontSize: 24, fontWeight: '900', color: '#12756D', marginTop: 2 },
-  statLabel: { fontSize: 12, fontWeight: '600', color: '#6B7C79' },
+  progressBarFill: { height: 16, backgroundColor: '#F4B942', borderRadius: 8 },
 
   // Chores
   sectionTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B', marginBottom: 12 },
@@ -974,7 +1032,7 @@ const styles = StyleSheet.create({
   choreCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 22,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1.5,
     borderColor: '#E3F1EE',
@@ -1007,20 +1065,6 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
   chipText: { fontSize: 12, fontWeight: '700' },
-  actionBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#4ECDC4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#4ECDC4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  actionBtnText: { fontSize: 22 },
 
   // Parent feedback
   feedbackLine: { marginTop: 8, fontSize: 13, color: '#12756D', fontStyle: 'italic', lineHeight: 18 },

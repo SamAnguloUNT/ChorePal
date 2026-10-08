@@ -16,10 +16,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 
+import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
 import { registerForPushNotifications } from '../utils/notifications';
 
@@ -158,18 +158,33 @@ export default function ParentDashboard() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Welcome back 👋</Text>
-            <Text style={styles.name}>{parentName || 'Loading...'}</Text>
-          </View>
+        {/* Hero header — same language as child dashboard */}
+        <View style={styles.hero}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroNameBlock}>
+              <Text style={styles.heroGreeting}>Welcome back 👋</Text>
+              <Text style={styles.heroName} numberOfLines={1}>
+                {parentName || 'Loading...'}
+              </Text>
+              <Text style={styles.heroSub}>
+                {children.length === 0
+                  ? 'Add your first kid to get started'
+                  : children.length === 1
+                    ? '1 kid connected'
+                    : `${children.length} kids connected`}
+              </Text>
+            </View>
 
-          <TouchableOpacity style={styles.avatarCircle} onPress={handleLogout}>
-            <Text style={styles.avatarText}>
-              {parentName ? parentName.charAt(0).toUpperCase() : '?'}
-            </Text>
-          </TouchableOpacity>
+            <PressableScale
+              style={styles.logoutBtn}
+              onPress={handleLogout}
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+            >
+              <Text style={styles.logoutBtnEmoji}>🚪</Text>
+              <Text style={styles.logoutBtnText}>Log out</Text>
+            </PressableScale>
+          </View>
         </View>
 
         {/* Kids Accounts */}
@@ -182,10 +197,14 @@ export default function ParentDashboard() {
           contentContainerStyle={styles.kidsRowContent}
         >
           {children.length === 0 ? (
-            <Text style={styles.noKidsText}>No kids added yet!</Text>
+            <View style={styles.noKidsCard}>
+              <Text style={styles.noKidsEmoji}>👨‍👩‍👧</Text>
+              <Text style={styles.noKidsText}>No kids added yet</Text>
+              <Text style={styles.noKidsHint}>Tap “Add Kid” to create an account</Text>
+            </View>
           ) : (
             children.map((child) => (
-              <TouchableOpacity
+              <PressableScale
                 key={child.id}
                 style={styles.kidCard}
                 onPress={() =>
@@ -196,7 +215,7 @@ export default function ParentDashboard() {
                 }
               >
                 <View style={styles.kidAvatar}>
-                  <Text style={styles.kidAvatarEmoji}>{child.avatar}</Text>
+                  <Text style={styles.kidAvatarEmoji}>{child.avatar || '👧'}</Text>
                 </View>
                 <Text style={styles.kidName} numberOfLines={1}>
                   {child.name}
@@ -205,12 +224,12 @@ export default function ParentDashboard() {
                   <Text style={styles.childBadgeText}>CHILD</Text>
                 </View>
                 <Text style={styles.kidCode}>{child.code}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             ))
           )}
 
           {/* Add New Kid */}
-          <TouchableOpacity
+          <PressableScale
             style={styles.addKidCard}
             onPress={() => router.push('/add-child')}
           >
@@ -218,14 +237,14 @@ export default function ParentDashboard() {
               <Text style={styles.addKidPlus}>+</Text>
             </View>
             <Text style={styles.addKidText}>Add Kid</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </ScrollView>
 
         {/* Quick Actions */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
 
         <View style={styles.actionsGrid}>
-          <TouchableOpacity
+          <PressableScale
             style={styles.actionBtn}
             onPress={() => router.push('/create-chore')}
           >
@@ -233,71 +252,70 @@ export default function ParentDashboard() {
               <Text style={styles.actionEmoji}>📝</Text>
             </View>
             <Text style={styles.actionText}>Create Chore</Text>
-          </TouchableOpacity>
+          </PressableScale>
 
-          <TouchableOpacity
+          <PressableScale
             style={styles.actionBtn}
             onPress={() => router.push('/create-reward')}
           >
-            <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
+            <View style={[styles.actionIcon, { backgroundColor: '#FFF4D6' }]}>
               <Text style={styles.actionEmoji}>🎁</Text>
             </View>
             <Text style={styles.actionText}>Create Reward</Text>
-          </TouchableOpacity>
+          </PressableScale>
 
-          <TouchableOpacity
+          <PressableScale
             style={styles.actionBtn}
             onPress={() => router.push('/approvals')}
           >
-            <View style={[styles.actionIcon, { backgroundColor: '#D1FAE5' }]}>
+            <View style={[styles.actionIcon, { backgroundColor: '#E0FFF4' }]}>
               <Text style={styles.actionEmoji}>✅</Text>
             </View>
             <Text style={styles.actionText}>Approvals</Text>
-          </TouchableOpacity>
+          </PressableScale>
 
-          <TouchableOpacity
+          <PressableScale
             style={styles.actionBtn}
             onPress={() => router.push('/discipline')}
           >
-            <View style={[styles.actionIcon, { backgroundColor: '#FEE2E2' }]}>
+            <View style={[styles.actionIcon, { backgroundColor: '#FFE5E5' }]}>
               <Text style={styles.actionEmoji}>⚖️</Text>
             </View>
             <Text style={styles.actionText}>Discipline</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </ScrollView>
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation — matches child dashboard shape */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.push('/chore-list')}
         >
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={styles.navText}>Chores</Text>
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity style={[styles.navItem, styles.navActive]}>
+        <PressableScale style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Kids</Text>
-          <View style={styles.activeIndicator} />
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.push('/rewards-list')}
         >
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={styles.navText}>Rewards</Text>
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.push('/settings')}
         >
           <Text style={styles.navEmoji}>⚙️</Text>
           <Text style={styles.navText}>Settings</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
     </SafeAreaView>
   );
@@ -306,129 +324,163 @@ export default function ParentDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F7F8',
+    backgroundColor: '#F3FBF9',
   },
   scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 120,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 130,
   },
 
-  // Header
-  header: {
+  // Hero (aligned with child dashboard)
+  hero: {
+    backgroundColor: '#0F7F76',
+    borderRadius: 28,
+    padding: 20,
+    marginBottom: 22,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 28,
-    backgroundColor: '#E8F8F7',
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  greeting: {
+  heroNameBlock: {
+    flexShrink: 1,
+  },
+  heroGreeting: {
     fontSize: 14,
-    color: '#0D9488',
     fontWeight: '600',
+    color: 'rgba(255,255,255,0.88)',
     marginBottom: 2,
   },
-  name: {
+  heroName: {
     fontSize: 26,
-    fontWeight: '800',
-    color: '#134E4A',
+    fontWeight: '900',
+    color: '#FFFFFF',
   },
-  avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#4ECDC4',
+  heroSub: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#4ECDC4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
+    gap: 5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 40,
   },
-  avatarText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#fff',
+  logoutBtnEmoji: {
+    fontSize: 15,
+  },
+  logoutBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#C62828',
   },
 
   // Section titles
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748B',
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#1F2D2B',
     marginBottom: 14,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
   },
 
   // Kids row
   kidsRow: {
-    marginBottom: 32,
+    marginBottom: 28,
   },
   kidsRowContent: {
     gap: 14,
     paddingRight: 8,
   },
+  noKidsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#DDF1EE',
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 200,
+  },
+  noKidsEmoji: {
+    fontSize: 36,
+    marginBottom: 8,
+  },
   noKidsText: {
-    fontSize: 14,
-    color: '#94A3B8',
-    alignSelf: 'center',
-    marginRight: 12,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1F2D2B',
+  },
+  noKidsHint: {
+    fontSize: 13,
+    color: '#6B7C79',
+    marginTop: 4,
+    textAlign: 'center',
   },
   kidCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 22,
     paddingVertical: 18,
     paddingHorizontal: 14,
     alignItems: 'center',
-    width: 124,
-    shadowColor: '#0F172A',
+    width: 130,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    shadowColor: '#0F7F76',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
     elevation: 3,
   },
   kidAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#CCFBF1',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E0F7F5',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   kidAvatarEmoji: {
-    fontSize: 30,
+    fontSize: 32,
   },
   kidName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1F2D2B',
     marginBottom: 6,
     textAlign: 'center',
   },
   childBadge: {
-    backgroundColor: '#FEE2E2',
-    borderRadius: 8,
+    backgroundColor: '#FFE5E5',
+    borderRadius: 10,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     marginBottom: 8,
   },
   childBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#DC2626',
+    fontWeight: '800',
+    color: '#E63946',
     letterSpacing: 0.4,
   },
   kidCode: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#6B7C79',
     fontWeight: '600',
     letterSpacing: 0.5,
   },
@@ -436,33 +488,34 @@ const styles = StyleSheet.create({
   // Add Kid card
   addKidCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 22,
     paddingVertical: 18,
     paddingHorizontal: 14,
     alignItems: 'center',
-    width: 124,
+    width: 130,
     borderWidth: 1.5,
-    borderColor: '#CBD5E1',
+    borderColor: '#4ECDC4',
     borderStyle: 'dashed',
+    justifyContent: 'center',
   },
   addKidCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#F1F5F9',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F0FFFE',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   addKidPlus: {
-    fontSize: 32,
-    color: '#94A3B8',
+    fontSize: 34,
+    color: '#4ECDC4',
     fontWeight: '300',
   },
   addKidText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
+    fontWeight: '700',
+    color: '#0F7F76',
   },
 
   // Quick Actions
@@ -475,75 +528,74 @@ const styles = StyleSheet.create({
   actionBtn: {
     width: '47%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 20,
     paddingVertical: 18,
     paddingHorizontal: 12,
     alignItems: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
     shadowRadius: 10,
     elevation: 2,
   },
   actionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
   },
   actionEmoji: {
-    fontSize: 24,
+    fontSize: 26,
   },
   actionText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
+    fontWeight: '700',
+    color: '#1F2D2B',
   },
 
-  // Bottom Nav
+  // Bottom Nav (matches child shape & active style)
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    gap: 8,
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    paddingTop: 10,
-    paddingBottom: 28,
-    shadowColor: '#0F172A',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 26,
+    shadowColor: '#0F7F76',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 10,
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
+    gap: 2,
+    paddingVertical: 8,
+    borderRadius: 18,
   },
-  navActive: {},
+  navActive: {
+    backgroundColor: '#E6F8F6',
+  },
   navEmoji: {
-    fontSize: 22,
-    marginBottom: 3,
+    fontSize: 24,
   },
   navText: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  navTextActive: {
-    color: '#0D9488',
+    fontSize: 12,
+    color: '#7C8B88',
     fontWeight: '700',
   },
-  activeIndicator: {
-    marginTop: 5,
-    width: 18,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#4ECDC4',
+  navTextActive: {
+    color: '#0F7F76',
   },
 });
