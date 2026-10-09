@@ -1,10 +1,14 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-    SafeAreaView, Share,
-    StyleSheet,
-    Text, TouchableOpacity,
-    View
+  SafeAreaView,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
+
+import PressableScale from '../components/PressableScale';
 
 export default function FamilyCodeScreen() {
   const router = useRouter();
@@ -18,25 +22,35 @@ export default function FamilyCodeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-
-        {/* Success Header */}
-        <View style={styles.successHeader}>
-          <Text style={styles.successEmoji}>{avatar}</Text>
-          <Text style={styles.successTitle}>Profile Created! 🎉</Text>
-          <Text style={styles.successSubtitle}>{name}'s account is ready</Text>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Success hero — same language as the dashboards */}
+        <View style={styles.hero}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarEmoji}>{avatar}</Text>
+          </View>
+          <Text style={styles.heroTitle}>Profile Created! 🎉</Text>
+          <Text style={styles.heroSub}>{name}'s account is ready</Text>
         </View>
 
-        {/* Code Card */}
+        {/* Family code */}
+        <Text style={styles.sectionTitle}>Family code</Text>
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>Family Code for {name}</Text>
-          <Text style={styles.codeText}>{code}</Text>
+          <View style={styles.codePill}>
+            <Text style={styles.codeText} selectable>
+              {code}
+            </Text>
+          </View>
           <Text style={styles.codeHint}>
-            Share this code with {name} so they can join ChorePal!
+            Share this code with {name} so they can join ChorePal. They will also need the PIN you set.
           </Text>
         </View>
 
-        {/* Child Info */}
+        {/* Child info */}
+        <Text style={styles.sectionTitle}>Profile</Text>
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Name</Text>
@@ -50,92 +64,178 @@ export default function FamilyCodeScreen() {
           <View style={styles.divider} />
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Avatar</Text>
-            <Text style={styles.infoValue}>{avatar}</Text>
+            <View style={styles.infoAvatar}>
+              <Text style={styles.infoAvatarEmoji}>{avatar}</Text>
+            </View>
           </View>
         </View>
 
         {/* Buttons */}
-        <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+        <PressableScale
+          style={styles.shareBtn}
+          onPress={handleShare}
+          accessibilityRole="button"
+          accessibilityLabel={`Share code with ${name}`}
+        >
           <Text style={styles.shareBtnText}>Share Code with {name} 📤</Text>
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity
+        <PressableScale
           style={styles.doneBtn}
-          onPress={() => router.replace('/parent-dashboard')}>
+          onPress={() => router.replace('/parent-dashboard')}
+          accessibilityRole="button"
+          accessibilityLabel="Done"
+        >
           <Text style={styles.doneBtnText}>Done</Text>
-        </TouchableOpacity>
-
-      </View>
+        </PressableScale>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  content: {
-    flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 40,
-    paddingBottom: 40,
-    justifyContent: 'center',
-    gap: 20,
-  },
-  successHeader: { alignItems: 'center' },
-  successEmoji: { fontSize: 72, marginBottom: 12 },
-  successTitle: { fontSize: 28, fontWeight: '800', color: '#2D2D2D', marginBottom: 6 },
-  successSubtitle: { fontSize: 16, color: '#888' },
-  codeCard: {
-    backgroundColor: '#F0FFFE',
-    borderRadius: 20,
-    padding: 24,
+  container: { flex: 1, backgroundColor: '#F3FBF9' },
+  scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 40 },
+
+  // Hero
+  hero: {
+    backgroundColor: '#0F7F76',
+    borderRadius: 28,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    borderWidth: 2,
+    marginBottom: 24,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  avatarCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  avatarEmoji: { fontSize: 52 },
+  heroTitle: { fontSize: 26, fontWeight: '900', color: '#FFFFFF' },
+  heroSub: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 4,
+  },
+
+  // Sections
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#1F2D2B',
+    marginBottom: 14,
+  },
+
+  // Code card
+  codeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1.5,
     borderColor: '#4ECDC4',
+    borderStyle: 'dashed',
+    marginBottom: 26,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  codeLabel: { fontSize: 13, color: '#888', fontWeight: '600', marginBottom: 10 },
-  codeText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#4ECDC4',
-    letterSpacing: 4,
-    marginBottom: 10,
+  codeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7C79',
+    marginBottom: 12,
   },
-  codeHint: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 18 },
-  infoCard: {
-    backgroundColor: '#F9F9F9',
+  codePill: {
+    backgroundColor: '#E6F8F6',
     borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#EEE',
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    marginBottom: 14,
+    maxWidth: '100%',
+  },
+  codeText: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#0F7F76',
+    letterSpacing: 3,
+    textAlign: 'center',
+  },
+  codeHint: {
+    fontSize: 13,
+    color: '#6B7C79',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+
+  // Info card
+  infoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    marginBottom: 26,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
-  infoLabel: { fontSize: 14, color: '#888', fontWeight: '600' },
-  infoValue: { fontSize: 14, color: '#2D2D2D', fontWeight: '700' },
-  divider: { height: 1, backgroundColor: '#EEE' },
+  infoLabel: { fontSize: 14, color: '#6B7C79', fontWeight: '700' },
+  infoValue: { fontSize: 15, color: '#1F2D2B', fontWeight: '800' },
+  infoAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E0F7F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoAvatarEmoji: { fontSize: 20 },
+  divider: { height: 1, backgroundColor: '#EEF5F4' },
+
+  // Buttons
   shareBtn: {
     backgroundColor: '#4ECDC4',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 18,
+    paddingVertical: 17,
     alignItems: 'center',
+    marginBottom: 12,
     shadowColor: '#4ECDC4',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
     elevation: 4,
   },
-  shareBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  shareBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   doneBtn: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 15,
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#4ECDC4',
   },
-  doneBtnText: { color: '#4ECDC4', fontSize: 16, fontWeight: '700' },
+  doneBtnText: { color: '#0F7F76', fontSize: 16, fontWeight: '800' },
 });
