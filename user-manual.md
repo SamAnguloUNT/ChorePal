@@ -32,18 +32,23 @@ ChorePal is a family-focused mobile application that turns everyday household ch
 <!-- STATUS: Please expand or adjust based on final tech stack (web vs native, exact browser support, etc.) -->
 
 - **Hardware:**  
-  - Smartphone or tablet (iPhone, Android, or tablet)  
-  - Camera (required for photo verification of chores)  
+  - Smartphone or tablet (iPhone, iPad) 
+  - Camera (used for photo verification of chores; children can also upload an existing photo from their camera roll)  
   - Minimum 2 GB RAM  
-  - Active internet connection
+  - Active internet connection (Wi-Fi or mobile data). ChorePal needs it to sync chores, upload photos, and run the photo check verification.
 
 - **Software:**  
-  - Modern mobile browser (Safari, Chrome, Firefox, or Edge) **or** the installed ChorePal app  
-  - iOS 14+ or Android 8.0+ recommended
+  - The installed ChorePal app **or** a modern mobile browser (Safari, Chrome, Firefox, or Edge)  
+  - iOS 14+ is recommended
+
+- **Permissions (asked the first time they are needed):**  
+  - **Camera and photo library** - to take or upload chore photos  
+  - **Notifications** - so parents are told when a chore is submitted and children are told when it is approved or rejected  
+  - **Location (optional)** - so a child is reminded when they arrive or leave the house to do their chores
 
 - **Other Dependencies:**  
-  - Valid email address (for parent account creation)  
-  - Family code + PIN (provided by the parent for children to join)
+  - Valid email address (only for parent account creation, kids do not need an email address)  
+  - Family code + PIN (created when the parent adds a child, then shared with that child so they can join the family)
 
 ---
 
@@ -63,39 +68,45 @@ If a native app version is available for your course, download it from the link 
 
 ## 4. Getting Started
 <!-- OWNER: Samuel Angulo -->
-<!-- STATUS: Please review steps and screenshots for accuracy. Add any missing first-time tips. -->
 
-### Step 1 – Open the app
-You will see the **Startup Screen**.
+> **Tip:** The parent sets up the family first. A child cannot join until a parent has created their profile and given them the Family Code and PIN.
 
-![Startup Screen](assets/images/startup-screen.png)
+### Step 1 - Open the app
+Open ChorePal. You will see the **Startup Screen**.
 
-### Step 2 – Choose your role
-- Tap **“I’m a Parent”** if you are setting up the family.  
-- Tap **“I’m a Child”** if you already have a family code.
+<img src="assets/images/startup-screen.png" alt="Startup Screen" width="240">
 
-### Step 3 – Create a Parent Account
+### Step 2 - Choose your role
+- Tap **"I'm a Parent"** if you are setting up the family.  
+- Tap **"I'm a Child"** if your parent has already given you a Family Code and PIN to use.
+
+### Step 3 - Create a Parent Account
 1. Enter your Full Name, Email, and Password.  
 2. Confirm the password.  
 3. Tap **Create Account**.
 
-![Create Parent Account](assets/images/create-parent-account.png)
+<img src="assets/images/create-parent-account.png" alt="Create Parent Account" width="240">
 
-### Step 4 – Parent Login (returning users)
+### Step 4 - Parent Login (returning users)
 Use your email and password on the Parent Login screen.
 
-![Parent Login](assets/images/parent-login.png)
+<img src="assets/images/parent-login.png" alt="Parent Login" width="240">
 
-### Step 5 – Child joins the family
-1. Select **“I’m a Child”**.  
+### Step 5 - Child joins the family
+1. Select **"I'm a Child"**.  
 2. Enter the **Family Code** and **PIN** given by your parent.  
 3. Tap **Join**.
 
-![Child Login with Family Code](assets/images/child-login.png)
+<img src="assets/images/child-login.png" alt="Child Login with Family Code" width="240">
 
-### Step 6 – First actions after login
-- **Parents:** Add children, create chores, and set up rewards.  
-- **Children:** View assigned chores and complete the first one by uploading a photo.
+### Step 6 - First actions after login
+- **Parents:** Add your children and create some chores. Explore what the app has to offer!!
+- **Children:** Check if you have any assigned chores, click on them and upload a photo.
+
+### First-time tips
+- Allow **camera**, **notifications** and **Location Tracking** when asked. Photo verification, approval reminders need them.  
+- Each time a child logs onto a device they will need their family code and pin. Click on your child account to access these if you need them   again.
+- If something goes wrong, see **Troubleshooting** (Section 6).
 
 ---
 
@@ -103,19 +114,22 @@ Use your email and password on the Parent Login screen.
 
 ### Feature 1: Parent Dashboard & Family Management
 <!-- OWNER: Sam Angulo -->
-<!-- STATUS: Expand with more detail if needed. Confirm all buttons and navigation match the current prototype. -->
 
-The Parent Dashboard is the central hub. Here you can see all kids, add new children, and quickly jump to Chores, Rewards, Approvals, or Settings.
+The Parent Dashboard is the central hub. Here you can see all kids, add new children, and quickly jump to creating chores, rewards, and approving chores.
 
 **How to use it:**
 1. After logging in you land on the Parent Dashboard.  
-2. Under **Kids Accounts** you see each child’s profile and unique family code.  
+2. Under **Kids Accounts** you see each child's profile and unique family code.  
 3. Tap the **+ Add Kid** card to create a new child profile.  
-4. Use the **Quick Actions** buttons (Chores, Rewards, Approvals, Settings) for fast navigation.
+4. Use the **Quick Actions** buttons (Create Chore, Create Reward, Approvals, and Discipline) for fast navigation.
+5. You can also use the bottom navigation bar (**Chores**, **Kids**, **Rewards**, **Settings**) from any parent screen.
 
-![Parent Dashboard](assets/images/parent-dashboard.png)
+**Tips:**
+- Share each child's Family Code and PIN with them so they can join (see Getting Started, Step 5).  
+- Check **Approvals** regularly. As the parent you have the final say in whether or not a chore is finished. Approvals allows you to see the photo your child submitted as well as the ChorePal Verification feedback they received. Children are notified as soon as you approve or reject a chore.
+- Don't remember the child's Family Code? No worries! Click on the child account to see their family code, pressing the edit button at the bottom allows you to see the pin you set. Everything besides the family-code on the child account is editable.
 
-![Parent Add Child](assets/images/parent-add-child.png)
+<img src="assets/images/family-management.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
 ---
 
