@@ -129,9 +129,7 @@ The Parent Dashboard is the central hub. Here you can see all kids, add new chil
 - Check **Approvals** regularly. As the parent you have the final say in whether or not a chore is finished. Approvals allows you to see the photo your child submitted as well as the ChorePal Verification feedback they received. Children are notified as soon as you approve or reject a chore.
 - Don't remember the child's Family Code? No worries! Click on the child account to see their family code, pressing the edit button at the bottom allows you to see the pin you set. Everything besides the family-code on the child account is editable.
 
-<img src="assets/images/parent-dashboard.png" alt="Parent Dashboard" width="240">
-<img src="assets/images/parent-add-child.png" alt="Parent Add Child" width="240">
-<img src="assets/images/family-code.png" alt="Parent Add Child" width="240">
+<img src="assets/images/family-management.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
 ---
 
