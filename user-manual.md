@@ -54,16 +54,23 @@ ChorePal is a family-focused mobile application that turns everyday household ch
 
 ## 3. Installation Guide
 <!-- OWNER: Adam Jabbar -->
-<!-- STATUS: Update with the real live URL once the app is deployed -->
 
-ChorePal is a web-based application. **No installation is required.**
+ChorePal is a mobile application that can be accessed using Expo Go during development and testing.
 
-1. Open a web browser on your phone or tablet.  
-2. Go to the ChorePal live URL provided by your team or instructor.  
-3. (Optional) On mobile, use “Add to Home Screen” so ChorePal appears like a regular app.  
+How to install ChorePal:
+1. Open the App Store on your iPhone or iPad.
+2. Search for Expo Go and install it.
+3. Open Expo Go once the installation is complete.
+4. Get the ChorePal QR code or development link from the team.
+5. Scan the QR code using your device's camera or open the provided link.
+6. Wait for ChorePal to load in Expo Go.
+7. Once the application opens, select I'm a Parent or I'm a Child to begin.
 
-If a native app version is available for your course, download it from the link provided by the team and install it normally.
-
+**Important Notes:**
+- An active internet connection is required.
+- Allow camera and notification permissions when requested.
+- Parents must create an account before children can join.
+- Children need their Family Code and PIN to log in.
 ---
 
 ## 4. Getting Started
@@ -198,21 +205,31 @@ Parents review every photo submission and decide whether to approve (award coins
 <!-- OWNER: Adam Jabbar -->
 <!-- STATUS: Coordinate so the parent creation steps and child redemption steps match. -->
 
-Parents create rewards that children can buy with the coins they earn. Children browse and redeem rewards from their own Rewards page.
+The Rewards feature allows parents to create rewards that children can redeem using the coins they earn from completing chores. This motivates and encourages children to complete their assigned chores and work toward certain rewards.
 
 **How to use it (Parent):**
-1. Go to **Rewards**.  
-2. Tap to create a new reward, set the coin cost, and optionally choose an icon.  
-3. Save the reward so it appears in the child’s store.
+1. Log into your parent account.
+2. Select Rewards from quick actions or from the bottom navigation menu.
+3. Tap the option to create a new reward.
+4. Under Reward Icon, tap to select an icon.
+5. Enter the Reward Title (e.g., 1 Hour Screen Time).
+6. Set the Coin Cost using the + and − buttons (maximum 1,000 coins).
+7. Enter a Description of the reward (optional).
+8. Under Available To, select All Children or Specific Child.
+9. Review the reward details in the Preview section.
+10. Create the reward so it becomes available to the selected children.
 
 ![Parent Rewards List](assets/images/parent-rewards-list.png)
 
 ![Create Rewards](assets/images/create-rewards.png)
 
 **How to use it (Child):**
-1. Tap the **Rewards** star icon at the bottom.  
-2. Browse available rewards and their coin costs.  
-3. Tap **Buy** when you have enough coins.
+1. Log into your child account using your Family Code and PIN.
+2. Select Rewards from the bottom navigation bar.
+3. Go through the available rewards in the reward store.
+4. Check the coin cost of each reward.
+5. Select Buy Reward when you have enough coins.
+6. The coins needed will be removed from your balance after a successful purchase.
 
 ![Child Rewards Page](assets/images/child-rewards.png)
 
