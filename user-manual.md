@@ -21,9 +21,12 @@
 
 ## 1. Introduction
 <!-- OWNER: Cole Brooks -->
-<!-- STATUS: Needs review / final polish -->
 
-ChorePal is a family-focused mobile application that turns everyday household chores into a fun, rewarding experience. Parents create and assign chores, set coin values, and approve completed work using photo verification. Children complete tasks, upload photos for review, earn coins, and redeem them for rewards. The app helps families build responsibility, track progress, and keep everyone motivated with clear goals and positive feedback.
+ChorePal is a family-focused mobile application designed to make household chores easier to manage and more rewarding for children. Parents can create and assign chores, set coin values, review completed work, and create rewards for their children to earn. Children can view their assigned chores, submit photo proof when a task is finished, receive feedback, earn coins, and use those coins to redeem rewards.
+
+The goal of ChorePal is to help families stay organized while encouraging responsibility and independence. Features such as photo verification, progress tracking, rewards, notifications, and parent approval help make chores more interactive while still giving parents control over the final approval process.
+
+This manual explains how to install and use ChorePal, including account setup, parent and child features, chore completion, rewards, troubleshooting, and other important functions within the application.
 
 ---
 
@@ -164,17 +167,20 @@ Parents can create chores, assign them to specific children, set coin values, du
 
 ### Feature 3: Child Dashboard & Photo Verification
 <!-- OWNER: Cole Brooks -->
-<!-- STATUS: This is a key section. Please make sure the photo upload + feedback flow is accurate and clear for non-technical users. -->
+
 
 Children see their personal progress, list of chores, and can submit photo proof for parent approval. After submission they also receive ChorePal Verification Feedback.
 
 **How to use it:**
-1. After joining with a family code, the child lands on **My Activities**.  
-2. The Daily Progress bar shows how much of today’s work is done.  
-3. Incomplete chores have a red X and a camera button.  
-4. Tap the camera button → choose **Take Photo** or **Upload**.  
-5. Tap **Submit for Approval**.  
-6. A confirmation screen appears with feedback.
+1. After logging in or joining with a family code, the child lands on the Chores dashboard.
+2. Review the coin balance and Today's Progress at the top of the screen.
+3. View chores due today. Optional chores appear under Bonus Chores, while future chores can be viewed from the Calendar tab.
+4. Tap a chore to open its details. The child can view the description, coin value, priority, and any parent feedback.
+5. Tap **Take Photo** or **Upload** to provide proof that the chore was completed.
+6. Tap **Submit for AI Review**.
+7. ChorePal analyzes the photo. If the photo does not appear to show the completed chore, the child is asked to try again.
+8. If the AI review passes, the chore is sent to the parent for final approval.
+9. The chore will show a waiting status until the parent approves or rejects it. If rejected, the child can view the parent's feedback and resubmit.
 
 ![Child Dashboard](assets/images/child-dashboard.png)
 
@@ -237,15 +243,16 @@ The Rewards feature allows parents to create rewards that children can redeem us
 
 ## 6. Troubleshooting
 <!-- OWNER: Cole Brooks -->
-<!-- STATUS: Add any real issues the team has already encountered during testing. Aim for at least 4–5 common problems. -->
+<!-- STATUS: I updated what i knew but i havent heard of the problems from testing from thursday yet, i Will ask on tuesday so i can update it more thoroughly. -->
 
 | Problem | Possible Cause | Solution |
 |---------|----------------|----------|
-| App will not load / blank screen | No internet or wrong URL | Check Wi-Fi/mobile data and refresh, or re-enter the correct URL. |
-| Child cannot join | Wrong Family Code or PIN | Ask the parent for the current code and 4-digit PIN shown on the child’s card. |
-| Photo upload fails | Camera permission denied or weak connection | Allow camera access in browser/device settings, or try uploading from the photo gallery. |
-| Coins not awarded | Parent has not approved the chore yet | Wait for parent approval or remind them to check the Approvals tab. |
-| Login fails | Incorrect email/password | Double-check spelling or use the “Log In” link on the Create Account screen. |
+| App will not load / blank screen | No internet connection or the app did not load correctly | Check Wi-Fi or mobile data, close and reopen the app, and try again. |
+| Child cannot log in | Incorrect Family Code or PIN | Ask the parent to verify the Family Code and 4-digit PIN shown on the child account. |
+| Photo upload or camera does not work | Camera or photo permissions were denied | Allow camera and photo access in the device settings, then reopen ChorePal and try again. |
+| AI rejects the chore photo | The photo does not clearly show the completed chore | Retake the photo with the completed chore clearly visible and submit it again for AI review. |
+| Coins are not awarded | The chore is still waiting for parent approval | Wait for the parent to review the submission in Approvals. Coins are added after the chore is approved. |
+| Parent or child does not receive notifications | Notification permission is disabled | Make sure notifications are enabled in ChorePal and in the device settings. |
 
 ---
 
