@@ -255,19 +255,16 @@ The Rewards feature allows parents to create rewards that children can redeem us
 | Parent or child does not receive notifications | Notification permission is disabled | Make sure notifications are enabled in ChorePal and in the device settings. |
 
 ---
-
-
 ## 7. Contact Information
 <!-- OWNER: Doreen Lobe -->
 <!-- STATUS: Completed -->
 
-- **Support Email:** Not currently available (academic capstone project)
+- **Support Email:** chorepal.team2@example.com
 - **Project Repository:** https://github.com/SamAnguloUNT/ChorePal
 - **Sponsor / Instructor:** Diana Rabah (via course channels)
 - **Team Lead:** Samuel Angulo
 
-For questions or technical issues, please contact the project team through the appropriate course communication channels. Include your device type and a brief description or screenshot of the issue.
-
+When requesting help, please include your device type, browser, and a short description (or screenshot) of the issue.
 
 ---
 
