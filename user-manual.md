@@ -388,7 +388,7 @@ The Discipline System lets a parent remove coins from a child's balance when a r
 ---
 
 <a id="faq"></a>
-## ❓ 10. FAQ (Extra Credit)
+## ❓ 10. FAQ 
 
 <details>
 <summary><b>👩‍👧 Can one parent account manage multiple children?</b></summary>
