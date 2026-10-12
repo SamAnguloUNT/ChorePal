@@ -239,9 +239,6 @@ The Rewards feature allows parents to create rewards that children can redeem us
 
 ![Child Rewards Page](assets/images/child-rewards.png)
 
----
-
----
 
 ### Feature 6: Text-to-Speech (Read Aloud)
 
