@@ -192,8 +192,7 @@ Children see their personal progress, list of chores, and can submit photo proof
 
 ### Feature 4: Approvals
 <!-- OWNER: Doreen Lobe -->
-<!-- STATUS: Confirm the approval/reject flow and any notes a parent can leave. -->
-
+<!-- STATUS: Completed -->
 Parents review every photo submission and decide whether to approve (award coins) or request a re-do.
 
 **How to use it:**
