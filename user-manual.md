@@ -256,16 +256,18 @@ The Rewards feature allows parents to create rewards that children can redeem us
 
 ---
 
+
 ## 7. Contact Information
 <!-- OWNER: Doreen Lobe -->
-<!-- STATUS: Replace placeholders with real team email, GitHub link, etc. -->
+<!-- STATUS: Completed -->
 
-- **Support Email:** chorepal.team2@example.com (replace with your actual team support email)  
-- **Project Repository:** [Link to your GitHub/GitLab repository]  
-- **Sponsor / Instructor:** Diana Rabah (via course channels)  
-- **Team Lead:** Samuel Angulo  
+- **Support Email:** Not currently available (academic capstone project)
+- **Project Repository:** https://github.com/SamAnguloUNT/ChorePal
+- **Sponsor / Instructor:** Diana Rabah (via course channels)
+- **Team Lead:** Samuel Angulo
 
-When requesting help, please include your device type, browser, and a short description (or screenshot) of the issue.
+For questions or technical issues, please contact the project team through the appropriate course communication channels. Include your device type and a brief description or screenshot of the issue.
+
 
 ---
 
