@@ -77,14 +77,12 @@ How to install ChorePal:
 ---
 
 ## 4. Getting Started
-<!-- OWNER: Samuel Angulo -->
+
 
 > **Tip:** The parent sets up the family first. A child cannot join until a parent has created their profile and given them the Family Code and PIN.
 
 ### Step 1 - Open the app
 Open ChorePal. You will see the **Startup Screen**.
-
-<img src="assets/images/startup-screen.png" alt="Startup Screen" width="240">
 
 ### Step 2 - Choose your role
 - Tap **"I'm a Parent"** if you are setting up the family.  
@@ -95,19 +93,17 @@ Open ChorePal. You will see the **Startup Screen**.
 2. Confirm the password.  
 3. Tap **Create Account**.
 
-<img src="assets/images/create-parent-account.png" alt="Create Parent Account" width="240">
-
 ### Step 4 - Parent Login (returning users)
 Use your email and password on the Parent Login screen.
 
-<img src="assets/images/parent-login.png" alt="Parent Login" width="240">
+<img src="assets/images/ParentLogin.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
 ### Step 5 - Child joins the family
 1. Select **"I'm a Child"**.  
 2. Enter the **Family Code** and **PIN** given by your parent.  
 3. Tap **Join**.
 
-<img src="assets/images/child-login.png" alt="Child Login with Family Code" width="240">
+<img src="assets/images/ChildLogin.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
 ### Step 6 - First actions after login
 - **Parents:** Add your children and create some chores. Explore what the app has to offer!!
@@ -123,7 +119,7 @@ Use your email and password on the Parent Login screen.
 ## 5. Features & Functions
 
 ### Feature 1: Parent Dashboard & Family Management
-<!-- OWNER: Sam Angulo -->
+
 
 The Parent Dashboard is the central hub. Here you can see all kids, add new children, and quickly jump to creating chores, rewards, and approving chores.
 
@@ -144,8 +140,7 @@ The Parent Dashboard is the central hub. Here you can see all kids, add new chil
 ---
 
 ### Feature 2: Creating & Managing Chores
-<!-- OWNER: Isaac Lindsay -->
-<!-- STATUS: Please verify the exact fields on the Create/Edit Chore screens and update steps if anything has changed. -->
+
 
 Parents can create chores, assign them to specific children, set coin values, due dates, and mark them as recurring.
 
@@ -157,16 +152,17 @@ Parents can create chores, assign them to specific children, set coin values, du
 5. Fill in the chore name, coin value, due date, and whether it is recurring.  
 6. Save the chore. You can later edit any chore from the list.
 
-![Parent Chore List](assets/images/parent-chore-list.png)
+**Tips:**
+- Click  **Create Chore** quickly create a chore and skip steps 1 and 2.
+- Selecting the highest priority will put the chore at the top of the child's to do list.
 
-![Parent Chore Creation](assets/images/parent-chore-creation.png)
+<img src="assets/images/ParentDashChore.png" alt="Create Parent Account" width="240">
 
-![Parent Edit Chore](assets/images/parent-edit-chore.png)
+<img src="assets/images/ParentDashChore" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
 ---
 
 ### Feature 3: Child Dashboard & Photo Verification
-<!-- OWNER: Cole Brooks -->
 
 
 Children see their personal progress, list of chores, and can submit photo proof for parent approval. After submission they also receive ChorePal Verification Feedback.
@@ -182,34 +178,27 @@ Children see their personal progress, list of chores, and can submit photo proof
 8. If the AI review passes, the chore is sent to the parent for final approval.
 9. The chore will show a waiting status until the parent approves or rejects it. If rejected, the child can view the parent's feedback and resubmit.
 
-![Child Dashboard](assets/images/child-dashboard.png)
+<img src="assets/images/ChildDashFlow.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
-![Child Upload for Verification](assets/images/child-upload.png)
-
-![ChorePal Verification Feedback](assets/images/chorepal-feedback.png)
 
 ---
 
 ### Feature 4: Approvals
-<!-- OWNER: Doreen Lobe -->
-<!-- STATUS: Confirm the approval/reject flow and any notes a parent can leave. -->
 
 Parents review every photo submission and decide whether to approve (award coins) or request a re-do.
 
 **How to use it:**
-1. Tap **Approvals** in the bottom navigation or Quick Actions.  
-2. Review the pending photos and details.  
-3. Approve to give the child their coins, or reject with a note.
+1. Tap **Approvals** in Quick Actions.  
+2. Click on the list of pending submissions.
+3. Review the pending photos and details.  
+4. Approve to give the child their coins, or reject with a note.
 
-![Parent Pending Approvals](assets/images/parent-pending-approvals.png)
-
-![Approval Page](assets/images/approval-page.png)
+<img src="assets/images/ParentApprovalFlow.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
 ---
 
 ### Feature 5: Rewards
-<!-- OWNER: Adam Jabbar -->
-<!-- STATUS: Coordinate so the parent creation steps and child redemption steps match. -->
+
 
 The Rewards feature allows parents to create rewards that children can redeem using the coins they earn from completing chores. This motivates and encourages children to complete their assigned chores and work toward certain rewards.
 
@@ -225,9 +214,8 @@ The Rewards feature allows parents to create rewards that children can redeem us
 9. Review the reward details in the Preview section.
 10. Create the reward so it becomes available to the selected children.
 
-![Parent Rewards List](assets/images/parent-rewards-list.png)
+<img src="assets/images/ParentCreateRewardFlow.png" alt="Parent Dashboard, Add Child and Family Code screens" width="600">
 
-![Create Rewards](assets/images/create-rewards.png)
 
 **How to use it (Child):**
 1. Log into your child account using your Family Code and PIN.
@@ -237,9 +225,9 @@ The Rewards feature allows parents to create rewards that children can redeem us
 5. Select Buy Reward when you have enough coins.
 6. The coins needed will be removed from your balance after a successful purchase.
 
-![Child Rewards Page](assets/images/child-rewards.png)
+<img src="assets/images/ChidRewardPage.png" alt="Create Parent Account" width="240">
 
----
+--- 
 
 ---
 
@@ -273,12 +261,11 @@ Text-to-Speech lets children listen to their chores, rewards, and feedback inste
 - Reading stops by itself when you close the chore or reward you were listening to.
 - There is nothing to turn on. Text-to-Speech is always available on the child screens and needs no extra permissions.
 
-<img width="645" height="1398" alt="image" src="https://github.com/user-attachments/assets/0b679e42-e574-4ba9-983e-671818a30a74" />
+<img src="assets/images/TextToSpeech.png" alt="Create Parent Account" width="240">
 
 
 ## 6. Troubleshooting
-<!-- OWNER: Cole Brooks -->
-<!-- STATUS: I updated what i knew but i havent heard of the problems from testing from thursday yet, i Will ask on tuesday so i can update it more thoroughly. -->
+
 
 | Problem | Possible Cause | Solution |
 |---------|----------------|----------|
@@ -291,21 +278,40 @@ Text-to-Speech lets children listen to their chores, rewards, and feedback inste
 
 ---
 ## 7. Contact Information
-<!-- OWNER: Doreen Lobe -->
-<!-- STATUS: Completed -->
 
-- **Support Email:** chorepal.team2@example.com
+
+- **Support Email:** support@chorepal.com
 - **Project Repository:** https://github.com/SamAnguloUNT/ChorePal
-- **Sponsor / Instructor:** Diana Rabah (via course channels)
-- **Team Lead:** Samuel Angulo
+- **Sponsor / Instructor:** Diana Rabah 
+- **Team Members:** Doreen Lobe, Adam Jabbar, Isaac Lindsay, Samuel Angulo, and Cole Brooks
 
 When requesting help, please include your device type, browser, and a short description (or screenshot) of the issue.
 
 ---
 
-## 8. FAQ (Extra Credit)
-<!-- OWNER: Isaac Lindsay -->
-<!-- STATUS: Feel free to add more questions based on what users actually ask during testing. -->
+## 9. Discipline System
+ 
+The Discipline System lets a parent remove coins from a child's balance when a rule has been broken, for example uploading a false chore photo. Every deduction requires a reason, and the child is told how many points were taken away and why.
+ 
+**How to use it:**
+1. Log into your parent account. Only a logged-in parent can use this feature, and only the children on your account are shown.
+2. On the Parent Dashboard, tap **Discipline** in Quick Actions.
+3. Under **Select Child**, tap the child's card. Each card shows the child's avatar, name, and current coin balance. The selected child is highlighted in red.
+4. Under **Points to Remove**, enter a whole number greater than zero (for example, 10).
+5. Under **Reason**, explain why the points are being removed (for example, "Uploaded a false chore photo"). A reason is required.
+6. Tap **⚠️ Remove Points**.
+7. A confirmation message asks "Remove [number] points from [child's name]?" Tap **Remove** to continue, or **Cancel** to go back without changing anything.
+8. A message confirms how many points were removed and the child's new balance. The fields clear and the balance on the screen updates.
+**Tips:**
+- A child's balance can never go below 0. If you remove more points than the child has, only the points they actually had are removed, and the confirmation shows the exact number.
+- Deductions take effect right away. There is no undo button, so double-check the child, amount, and reason before you tap **Remove**.
+- Each deduction is saved to the child's record with the amount, your reason, and the date and time.
+- Children see a point deduction notice with the reason you gave. Using a clear, specific reason helps them understand what happened, and children can have the notice read aloud with Text-to-Speech (Feature 6).
+- Tap **← Back** at any time to leave the screen without removing anything.
+
+---
+
+## 10. FAQ (Extra Credit)
 
 **Q: Can one parent account manage multiple children?**  
 **A:** Yes. From the Parent Dashboard you can add as many children as you need. Each child receives a unique family code.
