@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/images/chorepal-logo.png" alt="ChorePal logo" width="320">
+<img src="assets/images/logo.png" alt="ChorePal logo" width="320">
 
 # 📖 User Manual
 
@@ -439,7 +439,7 @@ The total coin balance appears at the top of the Child Dashboard and on the Rewa
 
 <div align="center">
 
-<img src="assets/images/chorepal-logo.png" alt="ChorePal logo" width="140">
+<img src="assets/images/logo.png" alt="ChorePal logo" width="140">
 
 **Thank you for using ChorePal!** 💚
 *Making chores fun & rewarding for the whole family.*
