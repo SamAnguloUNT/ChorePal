@@ -241,6 +241,41 @@ The Rewards feature allows parents to create rewards that children can redeem us
 
 ---
 
+---
+
+### Feature 6: Text-to-Speech (Read Aloud)
+
+Text-to-Speech lets children listen to their chores, rewards, and feedback instead of reading them. This helps younger children who are still learning to read use ChorePal on their own. A speaker icon appears next to anything that can be read aloud.
+
+**How to use it:**
+
+1. Log into your child account using your Family Code and PIN.
+2. Look for the **speaker icon** next to a chore, reward, or message.
+3. Tap the speaker icon. ChorePal reads the text out loud.
+4. While it is reading, the icon changes to a **stop icon**. Tap it again to stop early.
+5. Tap a different speaker icon at any time to hear something else. The first one stops automatically.
+
+**What can be read aloud:**
+
+- **Chore cards (Chores dashboard):** the chore name and how many coins it is worth.
+- **Chore details (What To Do):** the chore name, description, priority, and coin value.
+- **Parent feedback:** the message your parent left when they approved or rejected a chore.
+- **ChorePal Verification Feedback:** the result of the photo check, including whether you need to redo the chore.
+- **Point deduction notice:** how many points were taken away and the reason your parent gave.
+- **Reward cards (Rewards page):** the reward name and how much it costs.
+- **Reward details (About this reward):** the reward name, description, and coin cost.
+
+**Tips:**
+
+- Nothing plays on its own. ChorePal only reads aloud when the speaker icon is tapped.
+- Reading aloud works even when the iPhone or iPad is switched to silent, but the volume still needs to be turned up.
+- The voice reads a little slower than normal speech so it is easier for children to follow.
+- Reading stops by itself when you close the chore or reward you were listening to.
+- There is nothing to turn on. Text-to-Speech is always available on the child screens and needs no extra permissions.
+
+<img width="645" height="1398" alt="image" src="https://github.com/user-attachments/assets/0b679e42-e574-4ba9-983e-671818a30a74" />
+
+
 ## 6. Troubleshooting
 <!-- OWNER: Cole Brooks -->
 <!-- STATUS: I updated what i knew but i havent heard of the problems from testing from thursday yet, i Will ask on tuesday so i can update it more thoroughly. -->
