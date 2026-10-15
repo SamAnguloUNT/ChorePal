@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
   Animated,
@@ -18,9 +19,12 @@ import {
 } from 'react-native';
 import Celebration from '../components/Celebration';
 import FloatingBackground from '../components/FloatingBackground';
+import PalMascot from '../components/PalMascot';
+import PressableScale from '../components/PressableScale';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
 import { registerForPushNotifications, sendPushNotification } from '../utils/notifications';
+import { deletePhotoFromStorage } from '../utils/photoCleanup';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
 import { useHomeGeofence } from '../utils/useHomeGeofence';
 import { analyzeImage } from '../utils/visionApi';
@@ -120,18 +124,23 @@ export default function ChildDashboard() {
   const [disciplineModalVisible, setDisciplineModalVisible] = useState(false);
 
   // ---- Animations ----
-  // Avatar bobs up and down, coin wobbles, progress bar fills smoothly.
-  const bob = useRef(new Animated.Value(0)).current;
+  // The coin wobbles and (when there are many chores) the progress bar fills smoothly.
+  // Everything respects the phone's "Reduce Motion" accessibility setting.
   const wobble = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
-    const bobLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bob, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(bob, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    );
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      wobble.setValue(0);
+      return;
+    }
     const wobbleLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(wobble, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
@@ -140,13 +149,9 @@ export default function ChildDashboard() {
         Animated.delay(1500),
       ])
     );
-    bobLoop.start();
     wobbleLoop.start();
-    return () => {
-      bobLoop.stop();
-      wobbleLoop.stop();
-    };
-  }, [bob, wobble]);
+    return () => wobbleLoop.stop();
+  }, [wobble, reduceMotion]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -406,39 +411,49 @@ export default function ChildDashboard() {
     try {
       setSubmitting(true);
 
-      // Step 1 — Upload photo to Firebase Storage
-      const photoPath = `submissions/${childData.id}/${selectedChore.id}_${Date.now()}.jpg`;
-      const photoURL = await uploadPhotoToStorage(photo, photoPath);
-
-      // Step 2 — Run Google Vision AI
+      // Step 1 — Run Google Vision AI FIRST, on the photo that is still only on this phone.
+      // Nothing is uploaded yet, so a photo ChorePal does not verify is never stored anywhere.
       const base64 = await uriToBase64(photo);
       const aiAnalysis = await analyzeImage(base64, selectedChore.title);
 
-      // Step 3 — Show AI result in modal
+      // Step 2 — Show AI result in modal
       setAiResult(aiAnalysis);
 
-      // Step 4 — If AI rejects block submission
+      // Step 3 — If AI rejects, stop here. No upload happened, so there is nothing to delete.
       if (!aiAnalysis.isComplete) {
         setSubmitting(false);
         return;
       }
 
-      // Step 5 — Save submission to Firestore
-      await addDoc(collection(db, 'submissions'), {
-        choreId: selectedChore.id,
-        choreTitle: selectedChore.title,
-        choreCoins: selectedChore.coins,
-        childId: childData.id,
-        childName: childData.name,
-        childAvatar: childData.avatar,
-        parentId: childData.parentId,
-        photoURL,
-        aiApproved: aiAnalysis.isComplete,
-        aiConfidence: aiAnalysis.confidence,
-        aiDescription: aiAnalysis.description,
-        status: 'pending',
-        submittedAt: new Date(),
-      });
+      // Step 4 — Only a verified photo is uploaded to Firebase Storage. The parent app deletes
+      // it as soon as the parent approves or rejects the submission.
+      const photoPath = `submissions/${childData.id}/${selectedChore.id}_${Date.now()}.jpg`;
+      const photoURL = await uploadPhotoToStorage(photo, photoPath);
+
+      // Step 5 — Save submission to Firestore (photoPath lets the parent app delete the file later)
+      try {
+        await addDoc(collection(db, 'submissions'), {
+          choreId: selectedChore.id,
+          choreTitle: selectedChore.title,
+          choreCoins: selectedChore.coins,
+          childId: childData.id,
+          childName: childData.name,
+          childAvatar: childData.avatar,
+          parentId: childData.parentId,
+          photoURL,
+          photoPath,
+          aiApproved: aiAnalysis.isComplete,
+          aiConfidence: aiAnalysis.confidence,
+          aiDescription: aiAnalysis.description,
+          status: 'pending',
+          submittedAt: new Date(),
+        });
+      } catch (saveError) {
+        // The submission was not saved, so nobody could ever review or delete this photo.
+        // Remove it now instead of leaving it orphaned in Storage.
+        await deletePhotoFromStorage({ photoPath });
+        throw saveError;
+      }
 
       // Step 6 — Mark as submitted
       setSubmitted(true);
@@ -486,83 +501,104 @@ export default function ChildDashboard() {
 
   const todoCount = requiredChores.filter(c => !c.completed).length;
 
+  // Pal (the ChorePal clipboard) reacts to today's progress.
+  const palMood: 'sleepy' | 'working' | 'party' =
+    requiredChores.length === 0 ? 'working'
+    : todoCount === 0 ? 'party'
+    : completedCount === 0 ? 'sleepy'
+    : 'working';
+
+  // The clipboard has 3 boxes. Tick them in proportion, but never show "all ticked"
+  // until every chore is done, and never show "none" once something is done.
+  let palChecked = 0;
+  if (requiredChores.length > 0) {
+    palChecked = Math.round(progress * 3);
+    if (completedCount > 0) palChecked = Math.max(palChecked, 1);
+    if (todoCount > 0) palChecked = Math.min(palChecked, 2);
+  }
+
+  const palMessage =
+    requiredChores.length === 0 ? 'No chores right now. Enjoy! 🎈'
+    : todoCount === 0 ? 'ALL DONE! You are amazing! 🎉'
+    : completedCount === 0 ? `Let's go! ${todoCount} ${todoCount === 1 ? 'chore' : 'chores'} to do ☀️`
+    : todoCount === 1 ? 'Almost there! One to go! 💪'
+    : `${todoCount} chores to go. You've got this! 💪`;
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Fun animated background: floating stars, bubbles and coins (behind everything) */}
-      <FloatingBackground />
+      {!reduceMotion && <FloatingBackground />}
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Hero: greeting, coins, and progress. The old stats row was merged in here. */}
-        <View style={styles.hero}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.profileSection}>
-              <Animated.View
-                style={[
-                  styles.profileCircle,
-                  { transform: [{ translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }] },
-                ]}>
-                <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
-              </Animated.View>
-              <View style={styles.heroNameBlock}>
-                <Text style={styles.heroGreeting} numberOfLines={1}>
-                  Hi, {childData?.name || 'there'}!
-                </Text>
-                <Text style={styles.heroSub}>
-                  {requiredChores.length === 0
-                    ? 'No chores to do right now'
-                    : todoCount === 0
-                      ? 'All done today! 🎉'
-                      : todoCount === 1
-                        ? '1 chore to go'
-                        : `${todoCount} chores to go`}
-                </Text>
-              </View>
+        {/* Header: avatar, name, coins, log out */}
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <View style={styles.avatarSmall}>
+              <Text style={styles.avatarSmallEmoji}>{childData?.avatar || '👧'}</Text>
             </View>
-            {/* Small icon-only log out so it stops competing with the content */}
-            <TouchableOpacity
+            <Text style={styles.headerName} numberOfLines={1}>
+              Hi, {childData?.name || 'there'}!
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <View style={styles.coinPill}>
+              <Animated.Text
+                style={[
+                  styles.coinPillEmoji,
+                  { transform: [{ rotate: wobble.interpolate({ inputRange: [-1, 1], outputRange: ['-18deg', '18deg'] }) }] },
+                ]}>
+                🪙
+              </Animated.Text>
+              <Text style={styles.coinPillValue}>{childData?.coinBalance || 0}</Text>
+            </View>
+            <PressableScale
               style={styles.logoutBtn}
               onPress={handleLogout}
               accessibilityRole="button"
               accessibilityLabel="Log out">
               <Text style={styles.logoutBtnEmoji}>🚪</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.coinPill}>
-            <Animated.Text
-              style={[
-                styles.coinPillEmoji,
-                { transform: [{ rotate: wobble.interpolate({ inputRange: [-1, 1], outputRange: ['-18deg', '18deg'] }) }] },
-              ]}>
-              🪙
-            </Animated.Text>
-            <Text style={styles.coinPillValue}>{childData?.coinBalance || 0}</Text>
-            <Text style={styles.coinPillLabel}>coins</Text>
-          </View>
-
-          <View>
-            <View style={styles.heroProgressRow}>
-              <Text style={styles.heroProgressLabel}>Today's progress</Text>
-              <Text style={styles.heroProgressCount}>
-                {requiredChores.length === 0
-                  ? '-'
-                  : `${completedCount} of ${requiredChores.length}`}
-              </Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <Animated.View
-                style={[
-                  styles.progressBarFill,
-                  { width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
-                ]}
-              />
-            </View>
+            </PressableScale>
           </View>
         </View>
 
+        {/* Pal says something about today's progress */}
+        <View style={styles.bubble}>
+          <Text style={styles.bubbleText}>{palMessage}</Text>
+          <View style={styles.bubbleTail} />
+        </View>
+
+        {/* Pal: the ChorePal clipboard. Face, arms and checklist follow today's progress. */}
+        <View style={styles.palWrap}>
+          <PalMascot mood={palMood} checked={palChecked} size={230} reduceMotion={reduceMotion} />
+        </View>
+
+        {requiredChores.length > 0 && (
+          <View style={styles.progressRow}>
+            {requiredChores.length <= 8 ? (
+              <View style={styles.dots}>
+                {requiredChores.map((c, i) => (
+                  <View key={c.id ?? i} style={[styles.dot, i < completedCount && styles.dotOn]} />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.progressBarBg}>
+                <Animated.View
+                  style={[
+                    styles.progressBarFill,
+                    { width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+                  ]}
+                />
+              </View>
+            )}
+            <Text style={styles.progressLabel}>
+              {completedCount} of {requiredChores.length} done
+            </Text>
+          </View>
+        )}
+
         {/* Chores */}
-        <Text style={styles.sectionTitle}>Today's chores</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Today's chores</Text>
         <View style={styles.choresList}>
           {visibleChores.length === 0 ? (
             <View style={styles.noChores}>
@@ -592,8 +628,8 @@ export default function ChildDashboard() {
                     <Text style={styles.optionalHeader}>⭐ Bonus chores</Text>
                   )}
                   <AnimatedEntry index={index}>
-                    <TouchableOpacity
-                      activeOpacity={0.85}
+                    <PressableScale
+                     
                       onPress={() => openVerification(chore)}
                       accessibilityRole="button"
                       accessibilityLabel={`Open chore: ${chore.title}`}
@@ -638,7 +674,7 @@ export default function ChildDashboard() {
                           size={24}
                         />
                       </View>
-                    </TouchableOpacity>
+                    </PressableScale>
                   </AnimatedEntry>
                 </Fragment>
               );
@@ -650,22 +686,22 @@ export default function ChildDashboard() {
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={[styles.navItem, styles.navActive]}>
+        <PressableScale style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Chores</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </PressableScale>
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.replace('/child-calendar')}>
           <Text style={styles.navEmoji}>📅</Text>
           <Text style={styles.navText}>Calendar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </PressableScale>
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.replace('/child-rewards')}>
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={styles.navText}>Rewards</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
       {/* Automatic Discipline Deduction Notification */}
@@ -949,68 +985,86 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#EAF9F6' },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
 
-  // Hero
-  hero: {
-    backgroundColor: '#0F7F76',
-    borderRadius: 32,
-    padding: 20,
-    gap: 16,
-    marginBottom: 18,
-    shadowColor: '#0F7F76',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
-  profileSection: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
-  profileCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  // Header
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  avatarSmall: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  profileEmoji: { fontSize: 34 },
-  heroNameBlock: { flexShrink: 1 },
-  heroGreeting: { fontSize: 26, fontWeight: '900', color: '#FFFFFF' },
-  heroSub: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.88)', marginTop: 2 },
+  avatarSmallEmoji: { fontSize: 24 },
+  headerName: { fontSize: 22, fontWeight: '900', color: '#12403B', flexShrink: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  coinPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF4D6',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  coinPillEmoji: { fontSize: 18 },
+  coinPillValue: { fontSize: 18, fontWeight: '900', color: '#B7791F' },
   logoutBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(15,127,118,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoutBtnEmoji: { fontSize: 18 },
+  logoutBtnEmoji: { fontSize: 17 },
 
-  // Coin balance (replaces the old 3-tile stats row)
-  coinPill: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FFF4D6',
+  // Pal's speech bubble
+  bubble: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
+    paddingVertical: 11,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    marginTop: 14,
+    marginHorizontal: 8,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  coinPillEmoji: { fontSize: 22 },
-  coinPillValue: { fontSize: 22, fontWeight: '900', color: '#B7791F' },
-  coinPillLabel: { fontSize: 13, fontWeight: '700', color: '#B7791F' },
-
-  heroProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 },
-  heroProgressLabel: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  heroProgressCount: { fontSize: 14, fontWeight: '800', color: '#FFD479' },
-  progressBarBg: {
+  bubbleText: { fontSize: 15, fontWeight: '800', color: '#12403B', textAlign: 'center' },
+  bubbleTail: {
+    position: 'absolute',
+    bottom: -9,
+    alignSelf: 'center',
+    width: 16,
     height: 16,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 8,
-    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderRightWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: '#E3F1EE',
+    transform: [{ rotate: '45deg' }],
   },
-  progressBarFill: { height: 16, backgroundColor: '#F4B942', borderRadius: 8 },
+  palWrap: { alignItems: 'center', marginTop: 12 },
+
+  // Progress under Pal
+  progressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },
+  dots: { flexDirection: 'row', gap: 6 },
+  dot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#9FD6CD' },
+  dotOn: { backgroundColor: '#F4B942', borderColor: '#F4B942' },
+  progressLabel: { fontSize: 14, fontWeight: '800', color: '#12756D' },
+  progressBarBg: { width: 120, height: 14, backgroundColor: '#D3EFEA', borderRadius: 7, overflow: 'hidden' },
+  progressBarFill: { height: 14, backgroundColor: '#F4B942', borderRadius: 7 },
 
   // Chores
   sectionTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B', marginBottom: 12 },
