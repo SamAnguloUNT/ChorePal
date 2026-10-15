@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { db } from '../config/firebase';
 import { sendPushNotification } from '../utils/notifications';
+import { deletePhotoFromStorage } from '../utils/photoCleanup';
 
 export default function ApprovalDetailScreen() {
   const router = useRouter();
@@ -65,6 +66,30 @@ export default function ApprovalDetailScreen() {
     return childSnap.exists() ? childSnap : null;
   };
 
+  // Privacy: once the parent has decided (approve OR reject) the photo is no longer needed,
+  // so delete it from Storage and clear its link from the submission. The submission itself
+  // stays (status, comment, coins) because the child's chore list depends on it.
+  const removeSubmissionPhoto = async () => {
+    try {
+      const ref = doc(db, 'submissions', id as string);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (!data.photoURL && !data.photoPath) return;
+
+      const deleted = await deletePhotoFromStorage({
+        photoPath: data.photoPath,
+        photoURL: data.photoURL,
+      });
+      if (deleted) {
+        await updateDoc(ref, { photoURL: null, photoPath: null, photoDeletedAt: new Date() });
+      }
+    } catch (error) {
+      // Never block approving/rejecting because the cleanup failed
+      console.log('Photo cleanup failed:', error);
+    }
+  };
+
   const handleApprove = () => {
     Alert.alert(
       'Approve Chore? ✅',
@@ -96,6 +121,9 @@ export default function ApprovalDetailScreen() {
               await updateDoc(doc(db, 'children', childDoc.id), {
                 coinBalance: increment(parseInt(choreCoins as string)),
               });
+
+              // Delete the submitted photo now that the parent is done with it
+              await removeSubmissionPhoto();
 
               // Notify child (logs "No push token for recipient" if the child has none)
               try {
@@ -141,6 +169,9 @@ export default function ApprovalDetailScreen() {
                 parentComment: comment.trim(),
                 rejectedAt: new Date(),
               });
+
+              // Delete the submitted photo now that the parent is done with it
+              await removeSubmissionPhoto();
 
               // Notify child (logs "No push token for recipient" if the child has none)
               try {
@@ -271,6 +302,10 @@ export default function ApprovalDetailScreen() {
                 <Text style={styles.noPhotoText}>No photo available</Text>
               </View>
             )}
+
+            <Text style={styles.photoNote}>
+              🔒 This photo is deleted as soon as you approve or reject.
+            </Text>
 
             {/* Comment */}
             <Text style={styles.sectionLabel}>Leave a Comment (optional)</Text>
@@ -429,6 +464,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   noPhotoText: { color: '#888', fontSize: 14 },
+  photoNote: {
+    fontSize: 12,
+    color: '#6B7C79',
+    fontWeight: '600',
+    paddingHorizontal: 24,
+    marginTop: -10,
+    marginBottom: 18,
+  },
   commentInput: {
     borderWidth: 1.5,
     borderColor: '#DDD',
