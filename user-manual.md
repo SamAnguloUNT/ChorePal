@@ -361,7 +361,7 @@ Text-to-Speech lets children listen to their chores, rewards, and feedback inste
 ---
 
 <a id="discipline"></a>
-## ⚠️ 9. Discipline System
+## ⚠️ 8. Discipline System
 `👩‍👧 For Parents`
 
 The Discipline System lets a parent remove coins from a child's balance when a rule has been broken, for example uploading a false chore photo. Every deduction requires a reason, and the child is told how many points were taken away and why.
@@ -388,7 +388,7 @@ The Discipline System lets a parent remove coins from a child's balance when a r
 ---
 
 <a id="faq"></a>
-## ❓ 10. FAQ 
+## ❓ 9. FAQ 
 
 <details>
 <summary><b>👩‍👧 Can one parent account manage multiple children?</b></summary>
