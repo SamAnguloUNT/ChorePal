@@ -21,6 +21,7 @@ import {
 
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
+import { runRetentionCleanup } from '../utils/dataRetention';
 import { registerForPushNotifications } from '../utils/notifications';
 
 export default function ParentDashboard() {
@@ -56,6 +57,10 @@ export default function ParentDashboard() {
       const loadData = async () => {
         const user = auth.currentUser;
         if (!user) return;
+
+        // Privacy housekeeping in the background (old photos and records). Skips itself
+        // if it already ran today, and never blocks the dashboard.
+        runRetentionCleanup(user.uid);
 
         let parentPushToken: string | null = null;
         let homeLocation: any = null;

@@ -1,31 +1,31 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
-    collection,
-    deleteDoc,
-    doc,
-    getDoc,
-    getDocs,
-    query,
-    updateDoc,
-    where,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Keyboard,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import { auth, db } from '../config/firebase';
+import { deleteChildData } from '../utils/deleteFamilyData';
 
 export default function ChildDetailsScreen() {
   const router = useRouter();
@@ -46,7 +46,6 @@ export default function ChildDetailsScreen() {
 
   const [name, setName] = useState('');
   const [avatar, setAvatar] = useState('');
-  const [age, setAge] = useState('');
   const [pin, setPin] = useState('');
 
   useFocusEffect(
@@ -107,7 +106,6 @@ export default function ChildDetailsScreen() {
       setChild(data);
       setName(data.name || '');
       setAvatar(data.avatar || '');
-      setAge(data.age != null ? String(data.age) : '');
       setPin(data.pin != null ? String(data.pin) : '');
 
       const choresSnap = await getDocs(
@@ -218,10 +216,6 @@ export default function ChildDetailsScreen() {
         avatar: avatar.trim(),
       };
 
-      if (age.trim()) {
-        updates.age = Number(age);
-      }
-
       if (pin.trim()) {
         updates.pin = pin.trim();
       }
@@ -263,9 +257,9 @@ export default function ChildDetailsScreen() {
 
     Alert.alert(
       'Delete Child Account',
-      `Are you sure you want to permanently delete ${
+      `This permanently deletes ${
         child.name || 'this child'
-      }?`,
+      } and everything saved about them, including chore history, photos, purchases and their login. This cannot be undone.`,
       [
         {
           text: 'Cancel',
@@ -286,13 +280,13 @@ export default function ChildDetailsScreen() {
                 return;
               }
 
-              await deleteDoc(
-                doc(db, 'children', childId)
-              );
+              // Removes the profile AND the child's submissions, photos, purchases
+              // and chores made only for them (COPPA: parents can delete a child's data)
+              await deleteChildData(childId, user.uid);
 
               Alert.alert(
                 'Child Deleted',
-                'This child account has been permanently deleted from ChorePal.',
+                'This child account and everything saved about it has been permanently deleted from ChorePal.',
                 [
                   {
                     text: 'OK',
@@ -306,6 +300,11 @@ export default function ChildDetailsScreen() {
                 'Error deleting child:',
                 error
               );
+
+              if (typeof error?.message === 'string' && error.message.includes('could not be deleted')) {
+                Alert.alert('Could not finish deleting', error.message);
+                return;
+              }
 
               if (error?.code === 'permission-denied') {
                 Alert.alert(
@@ -415,15 +414,6 @@ export default function ChildDetailsScreen() {
             <View style={styles.divider} />
 
             <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Age</Text>
-              <Text style={styles.infoValue}>
-                {child.age ?? 'Not set'}
-              </Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Coins</Text>
               <Text style={styles.infoValue}>
                 {child.coinBalance ?? 0} 🪙
@@ -515,16 +505,6 @@ export default function ChildDetailsScreen() {
                 onSubmitEditing={Keyboard.dismiss}
               />
 
-              <Text style={styles.inputLabel}>Age</Text>
-
-              <TextInput
-                style={styles.input}
-                value={age}
-                onChangeText={setAge}
-                placeholder="Age"
-                keyboardType="number-pad"
-              />
-
               <Text style={styles.inputLabel}>
                 4-Digit PIN
               </Text>
@@ -551,11 +531,6 @@ export default function ChildDetailsScreen() {
 
                     setName(child.name || '');
                     setAvatar(child.avatar || '');
-                    setAge(
-                      child.age != null
-                        ? String(child.age)
-                        : ''
-                    );
                     setPin(
                       child.pin != null
                         ? String(child.pin)
