@@ -1,3 +1,4 @@
+
 import { useRouter } from 'expo-router';
 import {
   arrayUnion,
@@ -18,7 +19,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   View,
 } from 'react-native';
 
@@ -98,10 +99,10 @@ export default function DisciplineScreen() {
       return;
     }
 
-    const deduction = Number.parseInt(points, 10);
+    const deduction = Number(points.trim());
 
     if (
-      !Number.isFinite(deduction) ||
+      !Number.isSafeInteger(deduction) ||
       deduction <= 0
     ) {
       Alert.alert(
@@ -109,6 +110,21 @@ export default function DisciplineScreen() {
         'Enter a valid number of points.'
       );
 
+      return;
+    }
+
+    // Check the displayed balance
+    const displayedBalance = Number(
+      selectedChild.coinBalance || 0
+    );
+
+    if (deduction > displayedBalance) {
+      Alert.alert(
+        'Not Enough Points',
+        `This child only has ${displayedBalance} point${
+          displayedBalance === 1 ? '' : 's'
+        }. You cannot remove ${deduction}.`
+      );
       return;
     }
 
@@ -172,50 +188,56 @@ export default function DisciplineScreen() {
                     childSnapshot.data().coinBalance || 0
                   );
 
-                  updatedBalance = Math.max(
-                    0,
-                    currentBalance - deduction
-                  );
+                  // Check latest Firebase balance
+                  if (
+                    !Number.isFinite(currentBalance) ||
+                    deduction > currentBalance
+                  ) {
+                    throw new Error(
+                      `Not enough points. This child currently has ${currentBalance} point${
+                        currentBalance === 1 ? '' : 's'
+                      }.`
+                    );
+                  }
 
-                  removed =
-                    currentBalance - updatedBalance;
+                  updatedBalance =
+                    currentBalance - deduction;
+
+                  removed = deduction;
 
                   transaction.update(
                     childRef,
                     {
-                      coinBalance:
-                        updatedBalance,
+                      coinBalance: updatedBalance,
 
-                      disciplineHistory:
-                        arrayUnion({
-                          pointsDeducted:
-                            removed,
-
-                          reason:
-                            reason.trim(),
-
-                          parentId:
-                            user.uid,
-
-                          createdAt:
-                            new Date().toISOString(),
-                        }),
+                      disciplineHistory: arrayUnion({
+                        pointsDeducted: removed,
+                        reason: reason.trim(),
+                        parentId: user.uid,
+                        createdAt: new Date().toISOString(),
+                      }),
                     }
                   );
                 }
               );
 
+              setPoints('');
+              setReason('');
+
               Alert.alert(
                 'Points Removed',
                 `${removed} point${
                   removed === 1 ? '' : 's'
-                } removed. New balance: ${updatedBalance}.`
+                } removed. New balance: ${updatedBalance}.`,
+                [
+                  {
+                    text: 'OK',
+                    onPress: () =>
+                      router.replace('/parent-dashboard'),
+                  },
+                ],
+                { cancelable: false }
               );
-
-              setPoints('');
-              setReason('');
-
-              await loadChildren();
             } catch (error: any) {
               Alert.alert(
                 'Error',
@@ -231,229 +253,363 @@ export default function DisciplineScreen() {
     );
   };
 
+  const selectedBalance = Number(
+    selectedChild?.coinBalance || 0
+  );
+
+  const requestedPoints = Number(points.trim());
+
+  const exceedsBalance = Boolean(
+    selectedChild &&
+    points.trim() &&
+    Number.isFinite(requestedPoints) &&
+    requestedPoints > selectedBalance
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-
-      {/* Header */}
-      <View style={styles.header}>
-
-        <TouchableOpacity
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backText}>
-            ← Back
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>
-          Discipline System
-        </Text>
-
-        <View style={styles.headerSpacer} />
-
-      </View>
-
-      {/* Prevent keyboard from blocking form */}
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : 'height'
+          Platform.OS === 'ios' ? 'padding' : 'height'
         }
-        keyboardVerticalOffset={0}
       >
-
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
+          {/* Back Button */}
+          <Pressable
+            onPress={() =>
+              router.replace('/parent-dashboard')
+            }
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Return to Parent Dashboard"
+          >
+            <Text style={styles.backText}>
+              ‹  Back to Dashboard
+            </Text>
+          </Pressable>
 
-          {/* Select Child */}
-          <Text style={styles.label}>
-            Select Child
+          {/* Discipline Header */}
+          <View style={styles.hero}>
+            <View style={styles.heroIcon}>
+              <Text style={styles.heroEmoji}>
+                ⚖️
+              </Text>
+            </View>
+
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroTitle}>
+                Discipline
+              </Text>
+
+              <Text style={styles.heroSubtitle}>
+                Manage points fairly and keep track
+                of deductions.
+              </Text>
+            </View>
+          </View>
+
+          {/* Child Selection */}
+          <Text style={styles.sectionTitle}>
+            Choose a Child
+          </Text>
+
+          <Text style={styles.sectionDescription}>
+            Tap an account to see its available points.
           </Text>
 
           {children.length === 0 ? (
-
-            <Text style={styles.emptyText}>
-              No children found.
-            </Text>
-
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>
+                No children found for this account.
+              </Text>
+            </View>
           ) : (
+            <View style={styles.childrenContainer}>
+              {children.map((child) => {
+                const isSelected =
+                  selectedChild?.id === child.id;
 
-            children.map((child) => (
+                return (
+                  <Pressable
+                    key={child.id}
+                    onPress={() =>
+                      setSelectedChild(child)
+                    }
+                    style={({ pressed }) => [
+                      styles.childCard,
+                      isSelected &&
+                        styles.selectedChild,
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected: isSelected,
+                    }}
+                    accessibilityLabel={`Select ${
+                      child.name || 'Child'
+                    }, ${
+                      child.coinBalance || 0
+                    } points available`}
+                  >
+                    <View style={styles.avatarCircle}>
+                      <Text style={styles.avatar}>
+                        {child.avatar || '👧'}
+                      </Text>
+                    </View>
 
-              <TouchableOpacity
-                key={child.id}
-                style={[
-                  styles.childCard,
+                    <View style={styles.childInfo}>
+                      <Text style={styles.childName}>
+                        {child.name || 'Child'}
+                      </Text>
 
-                  selectedChild?.id ===
-                    child.id &&
-                    styles.selectedChild,
-                ]}
-                onPress={() =>
-                  setSelectedChild(child)
-                }
-              >
+                      <Text style={styles.balance}>
+                        {child.coinBalance || 0} points
+                        available
+                      </Text>
+                    </View>
 
-                <Text style={styles.avatar}>
-                  {child.avatar || '👧'}
-                </Text>
-
-                <View style={styles.childInfo}>
-
-                  <Text style={styles.childName}>
-                    {child.name || 'Child'}
-                  </Text>
-
-                  <Text style={styles.balance}>
-                    {child.coinBalance || 0} 🪙
-                  </Text>
-
-                </View>
-
-              </TouchableOpacity>
-
-            ))
-
+                    <Text
+                      style={[
+                        styles.selectionIndicator,
+                        isSelected &&
+                          styles.selectionActive,
+                      ]}
+                    >
+                      {isSelected ? '✓' : '○'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           )}
 
-          {/* Points */}
-          <Text style={styles.label}>
-            Points to Remove
+          {/* Remove Points Section */}
+          <Text style={styles.sectionTitle}>
+            Remove Points
           </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Example: 10"
-            keyboardType="number-pad"
-            value={points}
-            onChangeText={setPoints}
-          />
+          <View style={styles.formCard}>
+            {selectedChild && (
+              <View style={styles.balanceBanner}>
+                <Text style={styles.balanceBannerLabel}>
+                  Available balance
+                </Text>
 
-          {/* Reason */}
-          <Text style={styles.label}>
-            Reason
-          </Text>
+                <Text style={styles.balanceBannerAmount}>
+                  {selectedBalance} 🪙
+                </Text>
+              </View>
+            )}
 
-          <TextInput
-            style={[
-              styles.input,
-              styles.reasonInput,
-            ]}
-            placeholder="Example: Uploaded a false chore photo"
-            value={reason}
-            onChangeText={setReason}
-            multiline
-          />
-
-          {/* Remove Points */}
-          <TouchableOpacity
-            style={[
-              styles.deductButton,
-              loading &&
-                styles.disabledButton,
-            ]}
-            disabled={loading}
-            onPress={deductPoints}
-          >
-            <Text
-              style={styles.deductButtonText}
-            >
-              {loading
-                ? 'Please Wait...'
-                : '⚠️ Remove Points'}
+            <Text style={styles.label}>
+              Points to Remove
             </Text>
-          </TouchableOpacity>
 
+            <TextInput
+              style={[
+                styles.input,
+                exceedsBalance && styles.inputError,
+              ]}
+              placeholder="Example: 10"
+              placeholderTextColor="#9AA8A6"
+              keyboardType="number-pad"
+              value={points}
+              onChangeText={setPoints}
+              editable={!loading}
+            />
+
+            {exceedsBalance && (
+              <Text style={styles.errorText}>
+                You cannot remove more than{' '}
+                {selectedBalance} points.
+              </Text>
+            )}
+
+            <Text style={styles.label}>
+              Reason
+            </Text>
+
+            <TextInput
+              style={[
+                styles.input,
+                styles.reasonInput,
+              ]}
+              placeholder="Example: Uploaded an incorrect chore photo"
+              placeholderTextColor="#9AA8A6"
+              value={reason}
+              onChangeText={setReason}
+              editable={!loading}
+              multiline
+            />
+
+            {/* Remove Points Button */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.deductButton,
+                (loading ||
+                  !selectedChild ||
+                  exceedsBalance) &&
+                  styles.disabledButton,
+                pressed && styles.pressed,
+              ]}
+              disabled={
+                loading ||
+                !selectedChild ||
+                exceedsBalance
+              }
+              onPress={deductPoints}
+              accessibilityRole="button"
+            >
+              <Text style={styles.deductButtonText}>
+                {loading
+                  ? 'Removing Points...'
+                  : 'Remove Points'}
+              </Text>
+            </Pressable>
+          </View>
         </ScrollView>
-
       </KeyboardAvoidingView>
-
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F1FAF8',
   },
 
   keyboardContainer: {
     flex: 1,
   },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 100,
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 12,
+    paddingRight: 16,
   },
 
   backText: {
-    fontSize: 16,
-    color: '#4ECDC4',
-    fontWeight: '600',
-  },
-
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2D2D2D',
-  },
-
-  headerSpacer: {
-    width: 52,
-  },
-
-  content: {
-    padding: 24,
-    paddingBottom: 120,
-  },
-
-  label: {
+    color: '#127E78',
     fontSize: 15,
     fontWeight: '700',
-    color: '#2D2D2D',
-    marginBottom: 10,
-    marginTop: 16,
   },
 
-  emptyText: {
-    color: '#888',
-    fontSize: 14,
-    marginBottom: 10,
+  pressed: {
+    opacity: 0.72,
+  },
+
+  hero: {
+    backgroundColor: '#11847D',
+    borderRadius: 24,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 26,
+    shadowColor: '#0C665F',
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+
+  heroIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#E4F8F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+
+  heroEmoji: {
+    fontSize: 29,
+  },
+
+  heroCopy: {
+    flex: 1,
+  },
+
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+
+  heroSubtitle: {
+    color: '#E4F8F4',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 5,
+  },
+
+  sectionTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#203532',
+    marginBottom: 4,
+  },
+
+  sectionDescription: {
+    fontSize: 13,
+    color: '#718683',
+    marginBottom: 14,
+  },
+
+  childrenContainer: {
+    marginBottom: 25,
+    marginTop: 8,
   },
 
   childCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 10,
-    borderWidth: 1.5,
-    borderColor: '#EEEEEE',
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginBottom: 11,
+    borderWidth: 2,
+    borderColor: '#E3F0ED',
   },
 
   selectedChild: {
-    backgroundColor: '#FFF3F3',
-    borderColor: '#E63946',
+    borderColor: '#19B5A8',
+    backgroundColor: '#F4FFFD',
+  },
+
+  avatarCircle: {
+    backgroundColor: '#DFF8F4',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 13,
   },
 
   avatar: {
-    fontSize: 32,
-    marginRight: 14,
+    fontSize: 28,
   },
 
   childInfo: {
@@ -462,46 +618,119 @@ const styles = StyleSheet.create({
 
   childName: {
     fontSize: 17,
-    fontWeight: '700',
-    color: '#2D2D2D',
+    fontWeight: '800',
+    color: '#263A36',
   },
 
   balance: {
+    fontSize: 13,
+    color: '#748783',
     marginTop: 4,
+  },
+
+  selectionIndicator: {
+    fontSize: 26,
+    color: '#C8DBD7',
+  },
+
+  selectionActive: {
+    color: '#11A79B',
+    fontWeight: '800',
+  },
+
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 22,
+    marginVertical: 12,
+    marginBottom: 26,
+  },
+
+  emptyText: {
+    color: '#718683',
+    textAlign: 'center',
+  },
+
+  formCard: {
+    marginTop: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E3F0ED',
+  },
+
+  balanceBanner: {
+    backgroundColor: '#E6F8F5',
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  balanceBannerLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#246F69',
+  },
+
+  balanceBannerAmount: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#126F67',
+  },
+
+  label: {
+    color: '#263A36',
     fontSize: 14,
-    color: '#888',
+    fontWeight: '700',
+    marginTop: 13,
+    marginBottom: 9,
   },
 
   input: {
-    backgroundColor: '#F9F9F9',
+    backgroundColor: '#F7FBFA',
     borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 14,
+    borderColor: '#DCEBE8',
+    borderRadius: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     fontSize: 16,
+    color: '#263A36',
+  },
+
+  inputError: {
+    borderColor: '#DE515B',
+  },
+
+  errorText: {
+    color: '#C73945',
+    fontSize: 12,
+    marginTop: 7,
   },
 
   reasonInput: {
-    minHeight: 100,
+    minHeight: 105,
     textAlignVertical: 'top',
   },
 
   deductButton: {
-    marginTop: 30,
-    backgroundColor: '#E63946',
+    backgroundColor: '#E65A62',
+    borderRadius: 15,
     padding: 17,
-    borderRadius: 14,
     alignItems: 'center',
+    marginTop: 24,
   },
 
   deductButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
+    color: '#FFFFFF',
   },
 
   disabledButton: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
-
 });
