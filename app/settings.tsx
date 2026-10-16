@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { auth, db } from '../config/firebase';
 
+import { deleteAllFamilyData } from '../utils/deleteFamilyData';
 import {
   registerForPushNotifications,
   requestNotificationPermissions,
@@ -34,7 +35,7 @@ import {
 const FAQ_ITEMS = [
   {
     question: 'How do I add a child to my account?',
-    answer: 'Go to your Parent Dashboard and tap "Add Kid". Fill in your child\'s name, age, avatar and PIN. A unique family code will be generated for them to join.',
+    answer: 'Go to your Parent Dashboard and tap "Add Kid". Fill in your child\'s name, avatar and PIN, and confirm your consent. A unique family code will be generated for them to join.',
   },
   {
     question: 'How does my child log in?',
@@ -275,7 +276,7 @@ export default function SettingsScreen() {
 
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to permanently delete your ChorePal account? This action cannot be undone.',
+      'This permanently deletes your ChorePal account, all of your children\'s profiles, and every chore, reward, purchase and photo saved with them. This cannot be undone.',
       [
         {
           text: 'Cancel',
@@ -286,6 +287,8 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Remove every child's data and everything else this family saved first
+              await deleteAllFamilyData(user.uid);
               await deleteDoc(doc(db, 'users', user.uid));
               await deleteUser(user);
 
@@ -305,14 +308,14 @@ export default function SettingsScreen() {
               if (error?.code === 'auth/requires-recent-login') {
                 Alert.alert(
                   'Sign In Again',
-                  'For security, please log out, sign back in, and try deleting your account again.'
+                  'Your family data has been removed. For security, please log out, sign back in, and tap Delete Account again to finish deleting your login.'
                 );
                 return;
               }
 
               Alert.alert(
                 'Error',
-                'Unable to delete your account. Please try again.'
+                'Unable to finish deleting your account. Please try again.'
               );
             }
           },
@@ -326,11 +329,7 @@ export default function SettingsScreen() {
   };
 
   const handlePrivacy = () => {
-    Alert.alert(
-      'Privacy Policy',
-      'ChorePal takes your privacy seriously. We only collect data necessary to provide our service. We never sell your data to third parties. All photos are stored securely and only accessible to your family.',
-      [{ text: 'OK' }]
-    );
+    router.push('/privacy-policy');
   };
 
   const handleTerms = () => {
