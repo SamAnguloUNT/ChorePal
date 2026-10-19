@@ -1,19 +1,60 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Modal,
+  RefreshControl,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
   TouchableWithoutFeedback,
   View
 } from 'react-native';
+import FloatingBackground from '../components/FloatingBackground';
+import PressableScale from '../components/PressableScale';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
+
+// Slides up and fades in, staggered by index. Skips the motion when Reduce Motion is on.
+function AnimatedEntry({
+  index,
+  skip,
+  children,
+}: {
+  index: number;
+  skip: boolean;
+  children: React.ReactNode;
+}) {
+  const anim = useRef(new Animated.Value(skip ? 1 : 0)).current;
+  useEffect(() => {
+    if (skip) {
+      anim.setValue(1);
+      return;
+    }
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 450,
+      delay: Math.min(index, 8) * 90,
+      easing: Easing.out(Easing.back(1.1)),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index, skip]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [26, 0] }) }],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export default function ChildRewardsScreen() {
   const router = useRouter();
@@ -22,6 +63,8 @@ export default function ChildRewardsScreen() {
   const [coinBalance, setCoinBalance] = useState(0);
   const [purchasedRewards, setPurchasedRewards] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   // Reward popup state
   const [modalVisible, setModalVisible] = useState(false);
@@ -31,58 +74,127 @@ export default function ChildRewardsScreen() {
   const [justBought, setJustBought] = useState(false);
   const [errorText, setErrorText] = useState('');
 
+  // ---- Animations ----
+  const wobble = useRef(new Animated.Value(0)).current;      // hero coin wobble
+  const modalAnim = useRef(new Animated.Value(0)).current;   // popup pop-in
+  const boughtAnim = useRef(new Animated.Value(1)).current;  // popup emoji bounce on purchase
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Load child session
-        const session = await AsyncStorage.getItem('childSession');
-        if (session) {
-          const child = JSON.parse(session);
-          setChildData(child);
-          setCoinBalance(child.coinBalance || 0);
-
-          // FIX: Without a parentId we can't tell which family this child belongs to,
-          // and querying with `undefined` would throw. Show no rewards instead of
-          // risking rewards from other families.
-          if (!child.parentId) {
-            console.log('Child session is missing parentId — cannot load rewards.');
-            setRewards([]);
-            return;
-          }
-
-          // FIX: Scope rewards to this child's parent. Previously, 'all' matched every
-          // parent's "all children" rewards in the whole database.
-          // NOTE: This query needs a composite index on parentId + availableTo.
-          // Firestore will log a link to create it the first time this runs.
-          const rewardsQuery = query(
-            collection(db, 'rewards'),
-            where('parentId', '==', child.parentId),
-            where('availableTo', 'in', ['all', child.id])
-          );
-          const rewardsSnap = await getDocs(rewardsQuery);
-          const rewardsData = rewardsSnap.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          setRewards(rewardsData);
-
-          // Load already purchased rewards
-          const purchasedQuery = query(
-            collection(db, 'purchases'),
-            where('childId', '==', child.id)
-          );
-          const purchasedSnap = await getDocs(purchasedQuery);
-          const purchasedIds = purchasedSnap.docs.map(doc => doc.data().rewardId);
-          setPurchasedRewards(purchasedIds);
-        }
-      } catch (error) {
-        console.error('Error loading rewards:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
   }, []);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      wobble.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(wobble, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(wobble, { toValue: -1, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(wobble, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.delay(1500),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [wobble, reduceMotion]);
+
+  // Pop the popup card in whenever it opens
+  useEffect(() => {
+    if (!modalVisible) return;
+    if (reduceMotion) {
+      modalAnim.setValue(1);
+      return;
+    }
+    modalAnim.setValue(0);
+    Animated.spring(modalAnim, { toValue: 1, friction: 7, tension: 90, useNativeDriver: true }).start();
+  }, [modalVisible, modalAnim, reduceMotion]);
+
+  // Bounce the emoji when a purchase succeeds
+  useEffect(() => {
+    if (!justBought || reduceMotion) {
+      boughtAnim.setValue(1);
+      return;
+    }
+    boughtAnim.setValue(0.5);
+    Animated.spring(boughtAnim, { toValue: 1, friction: 3, tension: 120, useNativeDriver: true }).start();
+  }, [justBought, boughtAnim, reduceMotion]);
+
+  const loadData = useCallback(async () => {
+    try {
+      // Load child session
+      const session = await AsyncStorage.getItem('childSession');
+      if (session) {
+        const child = JSON.parse(session);
+        setChildData(child);
+        setCoinBalance(child.coinBalance || 0);
+
+        // Without a parentId we can't tell which family this child belongs to,
+        // and querying with `undefined` would throw. Show no rewards instead of
+        // risking rewards from other families.
+        if (!child.parentId) {
+          console.log('Child session is missing parentId — cannot load rewards.');
+          setRewards([]);
+          return;
+        }
+
+        // Pull the latest coin balance so a refresh also picks up coins the parent just approved.
+        try {
+          const childSnap = await getDoc(doc(db, 'children', child.id));
+          if (childSnap.exists()) {
+            const fresh: any = childSnap.data();
+            if (typeof fresh.coinBalance === 'number') {
+              const updated = { ...child, coinBalance: fresh.coinBalance };
+              setChildData(updated);
+              setCoinBalance(fresh.coinBalance);
+              await AsyncStorage.setItem('childSession', JSON.stringify(updated));
+            }
+          }
+        } catch (balanceError) {
+          console.log('Could not refresh coin balance:', balanceError);
+        }
+
+        // NOTE: This query needs a composite index on parentId + availableTo.
+        const rewardsQuery = query(
+          collection(db, 'rewards'),
+          where('parentId', '==', child.parentId),
+          where('availableTo', 'in', ['all', child.id])
+        );
+        const rewardsSnap = await getDocs(rewardsQuery);
+        const rewardsData = rewardsSnap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }));
+        setRewards(rewardsData);
+
+        // Load already purchased rewards
+        const purchasedQuery = query(
+          collection(db, 'purchases'),
+          where('childId', '==', child.id)
+        );
+        const purchasedSnap = await getDocs(purchasedQuery);
+        const purchasedIds = purchasedSnap.docs.map(d => d.data().rewardId);
+        setPurchasedRewards(purchasedIds);
+      }
+    } catch (error) {
+      console.error('Error loading rewards:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -115,8 +227,8 @@ export default function ChildRewardsScreen() {
     setErrorText('');
   };
 
-  // Same purchase logic as before, now run from inside the popup so we don't
-  // have to show an Alert on top of a Modal (which is unreliable on iOS).
+  // Purchase runs from inside the popup so we don't show an Alert on top of a Modal
+  // (which is unreliable on iOS).
   const purchaseReward = async (reward: any) => {
     const cost = Number(reward.coinCost ?? 0);
     try {
@@ -171,54 +283,77 @@ export default function ChildRewardsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      {/* Same floating orbs as the dashboard (behind everything) */}
+      {!reduceMotion && <FloatingBackground />}
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0F7F76"
+            colors={['#0F7F76']}
+          />
+        }>
 
         {/* Hero: greeting, log out, and coin balance */}
-        <View style={styles.hero}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.profileSection}>
-              <View style={styles.profileCircle}>
-                <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
+        <AnimatedEntry index={0} skip={reduceMotion}>
+          <View style={styles.hero}>
+            <View style={styles.heroTopRow}>
+              <View style={styles.profileSection}>
+                <View style={styles.profileCircle}>
+                  <Text style={styles.profileEmoji}>{childData?.avatar || '👧'}</Text>
+                </View>
+                <View style={styles.heroNameBlock}>
+                  <Text style={styles.heroGreeting} numberOfLines={1}>
+                    Hi, {childData?.name || 'there'}!
+                  </Text>
+                  <Text style={styles.heroSub}>Spend your coins on awesome rewards!</Text>
+                </View>
               </View>
-              <View style={styles.heroNameBlock}>
-                <Text style={styles.heroGreeting} numberOfLines={1}>
-                  Hi, {childData?.name || 'there'}!
-                </Text>
-                <Text style={styles.heroSub}>Spend your coins on awesome rewards!</Text>
-              </View>
+              <PressableScale
+                style={styles.logoutBtn}
+                onPress={handleLogout}
+                accessibilityRole="button"
+                accessibilityLabel="Log out">
+                <Text style={styles.logoutBtnEmoji}>🚪</Text>
+                <Text style={styles.logoutBtnText}>Log out</Text>
+              </PressableScale>
             </View>
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={handleLogout}
-              accessibilityRole="button"
-              accessibilityLabel="Log out">
-              <Text style={styles.logoutBtnEmoji}>🚪</Text>
-              <Text style={styles.logoutBtnText}>Log out</Text>
-            </TouchableOpacity>
-          </View>
 
-          <View style={styles.heroCoinRow}>
-            <Text style={styles.heroCoinEmoji}>🪙</Text>
-            <View>
-              <Text style={styles.heroCoinAmount}>{coinBalance}</Text>
-              <Text style={styles.heroCoinLabel}>coins to spend</Text>
+            <View style={styles.heroCoinRow}>
+              <Animated.Text
+                style={[
+                  styles.heroCoinEmoji,
+                  { transform: [{ rotate: wobble.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '16deg'] }) }] },
+                ]}>
+                🪙
+              </Animated.Text>
+              <View>
+                <Text style={styles.heroCoinAmount}>{coinBalance}</Text>
+                <Text style={styles.heroCoinLabel}>coins to spend</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </AnimatedEntry>
 
         {/* Quick stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statTile}>
-            <Text style={styles.statEmoji}>🛍️</Text>
-            <Text style={styles.statValue}>{canBuyCount}</Text>
-            <Text style={styles.statLabel}>You can buy</Text>
+        <AnimatedEntry index={1} skip={reduceMotion}>
+          <View style={styles.statsRow}>
+            <View style={styles.statTile}>
+              <Text style={styles.statEmoji}>🛍️</Text>
+              <Text style={styles.statValue}>{canBuyCount}</Text>
+              <Text style={styles.statLabel}>You can buy</Text>
+            </View>
+            <View style={styles.statTile}>
+              <Text style={styles.statEmoji}>🎁</Text>
+              <Text style={styles.statValue}>{boughtCount}</Text>
+              <Text style={styles.statLabel}>Bought</Text>
+            </View>
           </View>
-          <View style={styles.statTile}>
-            <Text style={styles.statEmoji}>🎁</Text>
-            <Text style={styles.statValue}>{boughtCount}</Text>
-            <Text style={styles.statLabel}>Bought</Text>
-          </View>
-        </View>
+        </AnimatedEntry>
 
         <Text style={styles.sectionTitle}>Rewards store</Text>
 
@@ -236,68 +371,75 @@ export default function ChildRewardsScreen() {
           </View>
         ) : (
           <View style={styles.rewardsList}>
-            {rewards.map((reward) => {
+            {rewards.map((reward, index) => {
               const cost = Number(reward.coinCost ?? 0);
               const canAfford = coinBalance >= cost;
               const isPurchased = purchasedRewards.includes(reward.id);
               const stripeColor = isPurchased ? '#4ECDC4' : canAfford ? '#F4B942' : '#C9D6D4';
+              const savedPct = cost > 0 ? Math.min(100, Math.round((coinBalance / cost) * 100)) : 100;
               return (
-                <TouchableOpacity
-                  key={reward.id}
-                  activeOpacity={0.85}
-                  onPress={() => openReward(reward)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open reward: ${reward.title}`}
-                  style={[styles.rewardCard, isPurchased && styles.rewardCardPurchased]}>
-                  <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
-                  <View style={styles.rewardBody}>
-                    <View style={[styles.rewardEmojiBox, isPurchased && styles.rewardEmojiBoxPurchased]}>
-                      <Text style={styles.rewardEmoji}>{reward.emoji || '🎁'}</Text>
-                    </View>
+                <AnimatedEntry key={reward.id} index={index + 2} skip={reduceMotion}>
+                  <PressableScale
+                    onPress={() => openReward(reward)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open reward: ${reward.title}`}
+                    style={[styles.rewardCard, isPurchased && styles.rewardCardPurchased]}>
+                    <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
+                    <View style={styles.rewardBody}>
+                      <View style={[styles.rewardEmojiBox, isPurchased && styles.rewardEmojiBoxPurchased]}>
+                        <Text style={styles.rewardEmoji}>{reward.emoji || '🎁'}</Text>
+                      </View>
 
-                    <View style={styles.rewardInfo}>
-                      <Text style={styles.rewardTitle} numberOfLines={2}>{reward.title}</Text>
-                      <View style={styles.chipRow}>
-                        <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
-                          <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {cost}</Text>
-                        </View>
-                        {isPurchased && (
-                          <View style={[styles.chip, { backgroundColor: '#E0FFF4' }]}>
-                            <Text style={[styles.chipText, { color: '#2A9D8F' }]}>Bought</Text>
+                      <View style={styles.rewardInfo}>
+                        <Text style={styles.rewardTitle} numberOfLines={2}>{reward.title}</Text>
+                        <View style={styles.chipRow}>
+                          <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
+                            <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {cost}</Text>
                           </View>
-                        )}
+                          {isPurchased && (
+                            <View style={[styles.chip, { backgroundColor: '#E0FFF4' }]}>
+                              <Text style={[styles.chipText, { color: '#2A9D8F' }]}>Bought</Text>
+                            </View>
+                          )}
+                          {!canAfford && !isPurchased && (
+                            <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
+                              <Text style={[styles.chipText, { color: '#E63946' }]}>
+                                Need {cost - coinBalance} more
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        {/* Progress toward an unaffordable reward */}
                         {!canAfford && !isPurchased && (
-                          <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
-                            <Text style={[styles.chipText, { color: '#E63946' }]}>
-                              Need {cost - coinBalance} more
-                            </Text>
+                          <View style={styles.savingTrack}>
+                            <View style={[styles.savingFill, { width: `${savedPct}%` }]} />
                           </View>
                         )}
                       </View>
-                    </View>
 
-                    {/* Text-to-speech: read the reward aloud */}
-                    <TextToSpeech
-                      text={`${reward.title}. It costs ${cost} coins.`}
-                      size={24}
-                    />
+                      {/* Text-to-speech: read the reward aloud */}
+                      <TextToSpeech
+                        text={`${reward.title}. It costs ${cost} coins.`}
+                        size={24}
+                      />
 
-                    {/* Visual hint only: the whole card is tappable. */}
-                    <View style={[
-                      styles.pill,
-                      isPurchased && styles.pillBought,
-                      !canAfford && !isPurchased && styles.pillLocked,
-                    ]}>
-                      <Text style={[
-                        styles.pillText,
-                        isPurchased && styles.pillTextBought,
-                        !canAfford && !isPurchased && styles.pillTextLocked,
+                      {/* Visual hint only: the whole card is tappable. */}
+                      <View style={[
+                        styles.pill,
+                        isPurchased && styles.pillBought,
+                        !canAfford && !isPurchased && styles.pillLocked,
                       ]}>
-                        {isPurchased ? '✓' : canAfford ? 'Buy' : '🔒'}
-                      </Text>
+                        <Text style={[
+                          styles.pillText,
+                          isPurchased && styles.pillTextBought,
+                          !canAfford && !isPurchased && styles.pillTextLocked,
+                        ]}>
+                          {isPurchased ? '✓' : canAfford ? 'Buy' : '🔒'}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
+                  </PressableScale>
+                </AnimatedEntry>
               );
             })}
           </View>
@@ -307,22 +449,22 @@ export default function ChildRewardsScreen() {
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.replace('/child-dashboard')}>
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={styles.navText}>Chores</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </PressableScale>
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.replace('/child-calendar')}>
           <Text style={styles.navEmoji}>📅</Text>
           <Text style={styles.navText}>Calendar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navItem, styles.navActive]}>
+        </PressableScale>
+        <PressableScale style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Rewards</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
       {/* Reward popup */}
@@ -334,7 +476,14 @@ export default function ChildRewardsScreen() {
         <TouchableWithoutFeedback onPress={closeReward}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={styles.modalCard}>
+              <Animated.View
+                style={[
+                  styles.modalCard,
+                  {
+                    opacity: modalAnim,
+                    transform: [{ scale: modalAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+                  },
+                ]}>
                 {!buying && (
                   <TouchableOpacity
                     style={styles.closeBtn}
@@ -346,9 +495,9 @@ export default function ChildRewardsScreen() {
                 )}
 
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  <View style={styles.modalEmojiBox}>
+                  <Animated.View style={[styles.modalEmojiBox, { transform: [{ scale: boughtAnim }] }]}>
                     <Text style={styles.modalEmoji}>{selectedReward?.emoji || '🎁'}</Text>
-                  </View>
+                  </Animated.View>
                   <Text style={styles.modalTitle}>
                     {justBought ? 'Reward bought! 🎉' : selectedReward?.title || 'Reward'}
                   </Text>
@@ -401,13 +550,13 @@ export default function ChildRewardsScreen() {
                       <Text style={styles.loadingText}>Buying your reward...</Text>
                     </View>
                   ) : justBought ? (
-                    <TouchableOpacity style={styles.primaryBtn} onPress={closeReward}>
+                    <PressableScale style={styles.primaryBtn} onPress={closeReward}>
                       <Text style={styles.primaryBtnText}>Awesome!</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ) : selPurchased ? (
-                    <TouchableOpacity style={styles.primaryBtn} onPress={closeReward}>
+                    <PressableScale style={styles.primaryBtn} onPress={closeReward}>
                       <Text style={styles.primaryBtnText}>Close</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   ) : !selCanAfford ? (
                     <View style={[styles.primaryBtn, styles.primaryBtnDisabled]}>
                       <Text style={[styles.primaryBtnText, styles.primaryBtnTextDisabled]}>
@@ -420,30 +569,30 @@ export default function ChildRewardsScreen() {
                         Buy "{selectedReward?.title}" for {selCost} coins?
                       </Text>
                       <View style={styles.confirmRow}>
-                        <TouchableOpacity
+                        <PressableScale
                           style={[styles.confirmBtn, styles.confirmBtnCancel]}
                           onPress={() => setConfirming(false)}>
                           <Text style={styles.confirmBtnCancelText}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                        </PressableScale>
+                        <PressableScale
                           style={[styles.confirmBtn, styles.confirmBtnYes]}
                           onPress={() => purchaseReward(selectedReward)}>
                           <Text style={styles.confirmBtnYesText}>Yes, buy it! 🎉</Text>
-                        </TouchableOpacity>
+                        </PressableScale>
                       </View>
                     </View>
                   ) : (
-                    <TouchableOpacity
+                    <PressableScale
                       style={styles.primaryBtn}
                       onPress={() => {
                         setErrorText('');
                         setConfirming(true);
                       }}>
                       <Text style={styles.primaryBtnText}>Buy for {selCost} 🪙</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   )}
                 </ScrollView>
-              </View>
+              </Animated.View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
@@ -454,7 +603,7 @@ export default function ChildRewardsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3FBF9' },
+  container: { flex: 1, backgroundColor: '#EAF9F6' },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
 
   // Hero
@@ -519,6 +668,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#DDF1EE',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   statEmoji: { fontSize: 22 },
   statValue: { fontSize: 24, fontWeight: '900', color: '#12756D', marginTop: 2 },
@@ -578,6 +732,14 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '700' },
   chipLarge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   chipTextLarge: { fontSize: 13, fontWeight: '800' },
+  savingTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EEF2F1',
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  savingFill: { height: 6, borderRadius: 3, backgroundColor: '#F4B942' },
   pill: {
     minWidth: 48,
     height: 48,
