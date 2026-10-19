@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { addDoc, collection } from 'firebase/firestore';
 import { useState } from 'react';
@@ -16,16 +17,19 @@ import {
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
 
+// Bump this (and the date in privacy-policy.tsx) whenever the privacy policy changes.
+const POLICY_VERSION = '2026-10-16';
+
 const AVATARS = ['👧', '🧒', '👦', '😊', '😎', '🤩', '🦸', '🐶', '🐱', '🦊', '🐻', '🐼'];
 
 export default function AddChildScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
   const [pin, setPin] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('👧');
+  const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState<'name' | 'age' | 'pin' | null>(null);
+  const [focused, setFocused] = useState<'name' | 'pin' | null>(null);
 
   const generateCode = (childName: string) => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -40,12 +44,19 @@ export default function AddChildScreen() {
     if (loading) return;
 
     const cleanName = name.trim();
-    if (!cleanName || !age || !pin) {
+    if (!cleanName || !pin) {
       Alert.alert('Missing!', 'Please fill in all fields!');
       return;
     }
     if (pin.length !== 4) {
       Alert.alert('Invalid PIN!', 'PIN must be 4 digits!');
+      return;
+    }
+    if (!consent) {
+      Alert.alert(
+        'Parent consent needed',
+        "Please confirm that you are this child's parent or guardian and agree to the privacy policy."
+      );
       return;
     }
     try {
@@ -61,19 +72,20 @@ export default function AddChildScreen() {
       // Save child to Firestore
       await addDoc(collection(db, 'children'), {
         name: cleanName,
-        age: parseInt(age, 10),
         pin,
         avatar: selectedAvatar,
         code,
         parentId: user.uid,
         coinBalance: 0,
         createdAt: new Date(),
+        // Record that the parent agreed (COPPA: consent before collecting a child's information)
+        parentConsent: { given: true, at: new Date(), policyVersion: POLICY_VERSION },
       });
 
       // Navigate to family code screen
       router.push({
         pathname: '/family-code',
-        params: { name: cleanName, age, avatar: selectedAvatar, code },
+        params: { name: cleanName, avatar: selectedAvatar, code },
       });
     } catch (error: any) {
       Alert.alert('Error!', error.message);
@@ -158,19 +170,6 @@ export default function AddChildScreen() {
               returnKeyType="next"
             />
 
-            <Text style={styles.label}>Age</Text>
-            <TextInput
-              style={[styles.input, focused === 'age' && styles.inputFocused]}
-              placeholder="Enter child's age"
-              placeholderTextColor="#9AA8A5"
-              value={age}
-              onChangeText={(t) => setAge(t.replace(/[^0-9]/g, ''))}
-              onFocus={() => setFocused('age')}
-              onBlur={() => setFocused(null)}
-              keyboardType="number-pad"
-              maxLength={2}
-            />
-
             <Text style={styles.label}>4-digit PIN</Text>
             <Text style={styles.hint}>Your child will use this PIN to log in</Text>
             <TextInput
@@ -187,9 +186,44 @@ export default function AddChildScreen() {
             />
           </View>
 
+          {/* Parental consent */}
+          <Text style={styles.sectionTitle}>Parent consent</Text>
+          <View style={styles.card}>
+            <Text style={styles.consentIntro}>
+              ChorePal will save your child's name or nickname, avatar, PIN, chore history and
+              the photos they submit as proof of chores. Photos are checked by Google's Gemini AI,
+              then deleted as soon as you approve or reject them. We never sell this information
+              or use it for ads.
+            </Text>
+
+            <PressableScale
+              style={styles.consentRow}
+              onPress={() => setConsent((c) => !c)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: consent }}
+              accessibilityLabel="I am this child's parent or guardian and I agree to the privacy policy"
+            >
+              <View style={[styles.checkbox, consent && styles.checkboxOn]}>
+                {consent && <Ionicons name="checkmark" size={18} color="#FFFFFF" />}
+              </View>
+              <Text style={styles.consentText}>
+                I am this child's parent or legal guardian, and I agree to how ChorePal handles
+                my child's information.
+              </Text>
+            </PressableScale>
+
+            <PressableScale
+              onPress={() => router.push('/privacy-policy')}
+              accessibilityRole="link"
+              accessibilityLabel="Read the privacy policy"
+            >
+              <Text style={styles.policyLink}>Read the full Privacy Policy →</Text>
+            </PressableScale>
+          </View>
+
           {/* Create button */}
           <PressableScale
-            style={[styles.createBtn, loading && styles.createBtnDisabled]}
+            style={[styles.createBtn, (loading || !consent) && styles.createBtnDisabled]}
             onPress={handleCreate}
             accessibilityRole="button"
             accessibilityLabel="Create profile and generate code"
@@ -341,6 +375,22 @@ const styles = StyleSheet.create({
   },
   createBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0, elevation: 0 },
   createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  consentIntro: { fontSize: 13, lineHeight: 19, color: '#42514F', marginBottom: 14 },
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxOn: { backgroundColor: '#4ECDC4' },
+  consentText: { flex: 1, fontSize: 14, lineHeight: 20, color: '#1F2D2B', fontWeight: '600' },
+  policyLink: { fontSize: 14, fontWeight: '800', color: '#0F7F76', paddingVertical: 4 },
   footnote: {
     fontSize: 13,
     color: '#6B7C79',

@@ -12,7 +12,7 @@ import PressableScale from '../components/PressableScale';
 
 export default function FamilyCodeScreen() {
   const router = useRouter();
-  const { name, age, avatar, code } = useLocalSearchParams();
+  const { name, avatar, code } = useLocalSearchParams();
 
   const handleShare = async () => {
     await Share.share({
@@ -55,11 +55,6 @@ export default function FamilyCodeScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Name</Text>
             <Text style={styles.infoValue}>{name}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Age</Text>
-            <Text style={styles.infoValue}>{age} years old</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>
