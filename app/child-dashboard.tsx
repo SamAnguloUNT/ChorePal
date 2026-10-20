@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -11,6 +11,7 @@ import {
   Easing,
   Image,
   Modal,
+  RefreshControl,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
@@ -122,6 +123,7 @@ export default function ChildDashboard() {
   const [submitted, setSubmitted] = useState(false);
   const [disciplineNotification, setDisciplineNotification] = useState<any>(null);
   const [disciplineModalVisible, setDisciplineModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // ---- Animations ----
   // The coin wobbles and (when there are many chores) the progress bar fills smoothly.
@@ -153,99 +155,113 @@ export default function ChildDashboard() {
     return () => wobbleLoop.stop();
   }, [wobble, reduceMotion]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const session = await AsyncStorage.getItem('childSession');
-      if (session) {
-        const child = JSON.parse(session);
-        setChildData(child);
+  const loadData = useCallback(async () => {
+    const session = await AsyncStorage.getItem('childSession');
+    if (session) {
+      const child = JSON.parse(session);
+      // Merge so a refresh doesn't overwrite the live coin balance with the older saved one.
+      setChildData((prev: any) => ({ ...child, ...prev }));
 
-        // Asks for permission AND saves this child's push token to their children doc,
-        // so the parent can send approve/reject notifications to this device.
-        registerForPushNotifications(child.id, 'child');
+      // Asks for permission AND saves this child's push token to their children doc,
+      // so the parent can send approve/reject notifications to this device.
+      registerForPushNotifications(child.id, 'child');
 
-        // FIX: Without a parentId we can't tell which family this child belongs to,
-        // and querying with `undefined` would throw. Show no chores instead of
-        // risking chores from other families.
-        if (!child.parentId) {
-          console.log('Child session is missing parentId — cannot load chores.');
-          setChores([]);
-          return;
-        }
-
-        // FIX: Scope chores to this child's parent. Previously, 'all' matched every
-        // parent's "all children" chores in the whole database.
-        // NOTE: This query needs a composite index on parentId + assignedTo.
-        // Firestore will log a link to create it the first time this runs.
-        const choresQuery = query(
-          collection(db, 'chores'),
-          where('parentId', '==', child.parentId),
-          where('assignedTo', 'in', ['all', child.id])
-        );
-        const choresSnap = await getDocs(choresQuery);
-        let choresData = choresSnap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          completed: false,
-          verified: false,
-        }));
-
-        const approvedQuery = query(
-          collection(db, 'submissions'),
-          where('childId', '==', child.id),
-          where('status', '==', 'approved')
-        );
-        const approvedSnap = await getDocs(approvedQuery);
-        const approvedChoreIds = approvedSnap.docs.map(d => d.data().choreId);
-
-        const pendingQuery = query(
-          collection(db, 'submissions'),
-          where('childId', '==', child.id),
-          where('status', '==', 'pending')
-        );
-        const pendingSnap = await getDocs(pendingQuery);
-        const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
-
-        // Parent feedback: look at approved + rejected submissions and keep the newest
-        // review for each chore (its status and the comment the parent wrote).
-        const rejectedQuery = query(
-          collection(db, 'submissions'),
-          where('childId', '==', child.id),
-          where('status', '==', 'rejected')
-        );
-        const rejectedSnap = await getDocs(rejectedQuery);
-        const latestReview: Record<string, { when: number; status: string; comment: string }> = {};
-        [...approvedSnap.docs, ...rejectedSnap.docs].forEach(d => {
-          const s: any = d.data();
-          const when = Math.max(toMillis(s.approvedAt), toMillis(s.rejectedAt), toMillis(s.submittedAt));
-          const existing = latestReview[s.choreId];
-          if (!existing || when > existing.when) {
-            latestReview[s.choreId] = {
-              when,
-              status: s.status,
-              comment: String(s.parentComment || '').trim(),
-            };
-          }
-        });
-
-        choresData = choresData.map(chore => {
-          const isPending = pendingChoreIds.includes(chore.id);
-          const review = latestReview[chore.id];
-          return {
-            ...chore,
-            completed: approvedChoreIds.includes(chore.id) || isPending,
-            verified: approvedChoreIds.includes(chore.id),
-            // Hide an old note while a newer resubmission is waiting for review
-            feedback: !isPending && review ? review.comment : '',
-            feedbackStatus: !isPending && review ? review.status : null,
-          };
-        });
-
-        setChores(choresData);
+      // FIX: Without a parentId we can't tell which family this child belongs to,
+      // and querying with `undefined` would throw. Show no chores instead of
+      // risking chores from other families.
+      if (!child.parentId) {
+        console.log('Child session is missing parentId — cannot load chores.');
+        setChores([]);
+        return;
       }
-    };
-    loadData();
+
+      // FIX: Scope chores to this child's parent. Previously, 'all' matched every
+      // parent's "all children" chores in the whole database.
+      // NOTE: This query needs a composite index on parentId + assignedTo.
+      // Firestore will log a link to create it the first time this runs.
+      const choresQuery = query(
+        collection(db, 'chores'),
+        where('parentId', '==', child.parentId),
+        where('assignedTo', 'in', ['all', child.id])
+      );
+      const choresSnap = await getDocs(choresQuery);
+      let choresData = choresSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        completed: false,
+        verified: false,
+      }));
+
+      const approvedQuery = query(
+        collection(db, 'submissions'),
+        where('childId', '==', child.id),
+        where('status', '==', 'approved')
+      );
+      const approvedSnap = await getDocs(approvedQuery);
+      const approvedChoreIds = approvedSnap.docs.map(d => d.data().choreId);
+
+      const pendingQuery = query(
+        collection(db, 'submissions'),
+        where('childId', '==', child.id),
+        where('status', '==', 'pending')
+      );
+      const pendingSnap = await getDocs(pendingQuery);
+      const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
+
+      // Parent feedback: look at approved + rejected submissions and keep the newest
+      // review for each chore (its status and the comment the parent wrote).
+      const rejectedQuery = query(
+        collection(db, 'submissions'),
+        where('childId', '==', child.id),
+        where('status', '==', 'rejected')
+      );
+      const rejectedSnap = await getDocs(rejectedQuery);
+      const latestReview: Record<string, { when: number; status: string; comment: string }> = {};
+      [...approvedSnap.docs, ...rejectedSnap.docs].forEach(d => {
+        const s: any = d.data();
+        const when = Math.max(toMillis(s.approvedAt), toMillis(s.rejectedAt), toMillis(s.submittedAt));
+        const existing = latestReview[s.choreId];
+        if (!existing || when > existing.when) {
+          latestReview[s.choreId] = {
+            when,
+            status: s.status,
+            comment: String(s.parentComment || '').trim(),
+          };
+        }
+      });
+
+      choresData = choresData.map(chore => {
+        const isPending = pendingChoreIds.includes(chore.id);
+        const review = latestReview[chore.id];
+        return {
+          ...chore,
+          completed: approvedChoreIds.includes(chore.id) || isPending,
+          verified: approvedChoreIds.includes(chore.id),
+          // Hide an old note while a newer resubmission is waiting for review
+          feedback: !isPending && review ? review.comment : '',
+          feedbackStatus: !isPending && review ? review.status : null,
+        };
+      });
+
+      setChores(choresData);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Pull to refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadData();
+    } catch (error) {
+      console.log('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadData]);
 
   // Listen for Discipline System deductions in real time.
   // If the child is using the app when points are removed, the popup appears immediately.
@@ -529,7 +545,17 @@ export default function ChildDashboard() {
       {/* Fun animated background: floating stars, bubbles and coins (behind everything) */}
       {!reduceMotion && <FloatingBackground />}
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0F7F76"
+            colors={['#0F7F76']}
+          />
+        }>
 
         {/* Header: avatar, name, coins, log out */}
         <View style={styles.headerRow}>
@@ -629,7 +655,6 @@ export default function ChildDashboard() {
                   )}
                   <AnimatedEntry index={index}>
                     <PressableScale
-                     
                       onPress={() => openVerification(chore)}
                       accessibilityRole="button"
                       accessibilityLabel={`Open chore: ${chore.title}`}

@@ -1,17 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Animated,
+  Easing,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import FloatingBackground from '../components/FloatingBackground';
+import PressableScale from '../components/PressableScale';
 import { db } from '../config/firebase';
 
 // Deadlines are saved by the parent app as "YYYY-MM-DD" strings (local dates).
@@ -50,6 +55,69 @@ const COLORS = {
   overdue: '#E63946',
 };
 
+// Slides up and fades in, staggered by index. Skips the motion when Reduce Motion is on.
+function AnimatedEntry({
+  index,
+  skip,
+  children,
+}: {
+  index: number;
+  skip: boolean;
+  children: React.ReactNode;
+}) {
+  const anim = useRef(new Animated.Value(skip ? 1 : 0)).current;
+  useEffect(() => {
+    if (skip) {
+      anim.setValue(1);
+      return;
+    }
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 420,
+      delay: Math.min(index, 8) * 80,
+      easing: Easing.out(Easing.back(1.1)),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index, skip]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// An emoji that gently floats up and down.
+function FloatingEmoji({ emoji, skip }: { emoji: string; skip: boolean }) {
+  const float = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (skip) {
+      float.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(float, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(float, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [float, skip]);
+  return (
+    <Animated.Text
+      style={[
+        styles.emptyEmoji,
+        { transform: [{ translateY: float.interpolate({ inputRange: [0, 1], outputRange: [0, -8] }) }] },
+      ]}>
+      {emoji}
+    </Animated.Text>
+  );
+}
+
 export default function ChildCalendarScreen() {
   const router = useRouter();
   const today = toLocalDateString(new Date());
@@ -57,57 +125,72 @@ export default function ChildCalendarScreen() {
   const [childName, setChildName] = useState('');
   const [chores, setChores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
+  }, []);
+
+  const loadData = useCallback(async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setLoading(true);
+      const session = await AsyncStorage.getItem('childSession');
+      if (!session) { setChores([]); return; }
+      const child = JSON.parse(session);
+      setChildName(child.name || '');
+      if (!child.parentId) { setChores([]); return; }
+
+      // Same query the dashboard uses: this child's chores plus the "all children" ones
+      const choresSnap = await getDocs(query(
+        collection(db, 'chores'),
+        where('parentId', '==', child.parentId),
+        where('assignedTo', 'in', ['all', child.id])
+      ));
+
+      const approvedSnap = await getDocs(query(
+        collection(db, 'submissions'),
+        where('childId', '==', child.id),
+        where('status', '==', 'approved')
+      ));
+      const pendingSnap = await getDocs(query(
+        collection(db, 'submissions'),
+        where('childId', '==', child.id),
+        where('status', '==', 'pending')
+      ));
+      const approvedIds = approvedSnap.docs.map(d => d.data().choreId);
+      const pendingIds = pendingSnap.docs.map(d => d.data().choreId);
+
+      setChores(choresSnap.docs.map(d => {
+        const data: any = d.data();
+        const status: ChoreStatus = approvedIds.includes(d.id)
+          ? 'approved'
+          : pendingIds.includes(d.id)
+            ? 'pending'
+            : 'todo';
+        return { id: d.id, ...data, status };
+      }));
+    } catch (error) {
+      console.error('Error loading calendar:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      const load = async () => {
-        try {
-          setLoading(true);
-          const session = await AsyncStorage.getItem('childSession');
-          if (!session) { setChores([]); return; }
-          const child = JSON.parse(session);
-          setChildName(child.name || '');
-          if (!child.parentId) { setChores([]); return; }
-
-          // Same query the dashboard uses: this child's chores plus the "all children" ones
-          const choresSnap = await getDocs(query(
-            collection(db, 'chores'),
-            where('parentId', '==', child.parentId),
-            where('assignedTo', 'in', ['all', child.id])
-          ));
-
-          const approvedSnap = await getDocs(query(
-            collection(db, 'submissions'),
-            where('childId', '==', child.id),
-            where('status', '==', 'approved')
-          ));
-          const pendingSnap = await getDocs(query(
-            collection(db, 'submissions'),
-            where('childId', '==', child.id),
-            where('status', '==', 'pending')
-          ));
-          const approvedIds = approvedSnap.docs.map(d => d.data().choreId);
-          const pendingIds = pendingSnap.docs.map(d => d.data().choreId);
-
-          setChores(choresSnap.docs.map(d => {
-            const data: any = d.data();
-            const status: ChoreStatus = approvedIds.includes(d.id)
-              ? 'approved'
-              : pendingIds.includes(d.id)
-                ? 'pending'
-                : 'todo';
-            return { id: d.id, ...data, status };
-          }));
-        } catch (error) {
-          console.error('Error loading calendar:', error);
-        } finally {
-          setLoading(false);
-        }
-      };
-      load();
-    }, [])
+      loadData();
+    }, [loadData])
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData(true);
+    setRefreshing(false);
+  }, [loadData]);
 
   // Group chores by the day they are due (chores with no valid deadline can't go on a calendar)
   const byDate = useMemo(() => {
@@ -141,6 +224,7 @@ export default function ChildCalendarScreen() {
   const dayChores = [...(byDate[selectedDate] || [])].sort(
     (a, b) => Number(isChoreOptional(a)) - Number(isChoreOptional(b))
   );
+  const doneCount = dayChores.filter(c => c.status === 'approved').length;
 
   const statusInfo = (c: any) => {
     if (c.status === 'approved') return { label: 'Done ✓', bg: '#E0FFF4', color: '#2A9D8F', stripe: COLORS.approved };
@@ -151,12 +235,27 @@ export default function ChildCalendarScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      {/* Same floating orbs as the dashboard (behind everything) */}
+      {!reduceMotion && <FloatingBackground />}
 
-        <View style={styles.header}>
-          <Text style={styles.title}>Chore Calendar 📅</Text>
-          {!!childName && <Text style={styles.subtitle}>See what is due each day, {childName}!</Text>}
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#0F7F76"
+            colors={['#0F7F76']}
+          />
+        }>
+
+        <AnimatedEntry index={0} skip={reduceMotion}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Chore Calendar 📅</Text>
+            {!!childName && <Text style={styles.subtitle}>See what is due each day, {childName}!</Text>}
+          </View>
+        </AnimatedEntry>
 
         {loading ? (
           <View style={styles.loadingBox}>
@@ -165,73 +264,100 @@ export default function ChildCalendarScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.calendarCard}>
-              <Calendar
-                current={selectedDate}
-                markingType="multi-dot"
-                markedDates={markedDates}
-                onDayPress={(day: any) => setSelectedDate(day.dateString)}
-                enableSwipeMonths
-                theme={{
-                  selectedDayBackgroundColor: '#0F7F76',
-                  selectedDayTextColor: '#fff',
-                  todayTextColor: '#0F7F76',
-                  arrowColor: '#0F7F76',
-                  textDayFontWeight: '600',
-                  textMonthFontWeight: '800',
-                  textDayHeaderFontWeight: '700',
-                }}
-              />
-              <View style={styles.legendRow}>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.todo }]} /><Text style={styles.legendText}>To do</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.pending }]} /><Text style={styles.legendText}>Waiting</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.approved }]} /><Text style={styles.legendText}>Done</Text></View>
-                <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.overdue }]} /><Text style={styles.legendText}>Overdue</Text></View>
+            <AnimatedEntry index={1} skip={reduceMotion}>
+              <View style={styles.calendarCard}>
+                <Calendar
+                  current={selectedDate}
+                  markingType="multi-dot"
+                  markedDates={markedDates}
+                  onDayPress={(day: any) => setSelectedDate(day.dateString)}
+                  enableSwipeMonths
+                  theme={{
+                    selectedDayBackgroundColor: '#0F7F76',
+                    selectedDayTextColor: '#fff',
+                    todayTextColor: '#0F7F76',
+                    arrowColor: '#0F7F76',
+                    textDayFontWeight: '600',
+                    textMonthFontWeight: '800',
+                    textDayHeaderFontWeight: '700',
+                  }}
+                />
+                <View style={styles.legendRow}>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.todo }]} /><Text style={styles.legendText}>To do</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.pending }]} /><Text style={styles.legendText}>Waiting</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.approved }]} /><Text style={styles.legendText}>Done</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.overdue }]} /><Text style={styles.legendText}>Overdue</Text></View>
+                </View>
               </View>
-            </View>
+            </AnimatedEntry>
 
-            <Text style={styles.dayTitle}>
-              {selectedDate === today ? 'Today' : formatLong(selectedDate)}
-            </Text>
-            {selectedDate === today && <Text style={styles.daySub}>{formatLong(selectedDate)}</Text>}
+            {/* Re-animates every time a new day is picked */}
+            <AnimatedEntry key={`title-${selectedDate}`} index={0} skip={reduceMotion}>
+              <View style={styles.dayHeaderRow}>
+                <View style={styles.dayHeaderText}>
+                  <Text style={styles.dayTitle}>
+                    {selectedDate === today ? 'Today' : formatLong(selectedDate)}
+                  </Text>
+                  {selectedDate === today && <Text style={styles.daySub}>{formatLong(selectedDate)}</Text>}
+                  {dayChores.length > 0 && (
+                    <Text style={styles.summaryText}>
+                      {doneCount} of {dayChores.length} done
+                    </Text>
+                  )}
+                </View>
+                {selectedDate !== today && (
+                  <PressableScale
+                    style={styles.todayBtn}
+                    onPress={() => setSelectedDate(today)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Jump to today">
+                    <Text style={styles.todayBtnText}>Today</Text>
+                  </PressableScale>
+                )}
+              </View>
+            </AnimatedEntry>
 
             <View style={styles.list}>
               {dayChores.length === 0 ? (
-                <View style={styles.emptyBox}>
-                  <Text style={styles.emptyEmoji}>🎉</Text>
-                  <Text style={styles.emptyText}>Nothing due on this day</Text>
-                </View>
+                <AnimatedEntry key={`empty-${selectedDate}`} index={1} skip={reduceMotion}>
+                  <View style={styles.emptyBox}>
+                    <FloatingEmoji emoji="🎉" skip={reduceMotion} />
+                    <Text style={styles.emptyText}>Nothing due on this day</Text>
+                  </View>
+                </AnimatedEntry>
               ) : (
-                dayChores.map(chore => {
+                dayChores.map((chore, index) => {
                   const info = statusInfo(chore);
                   const pr = PRIORITY_LABEL[String(chore.priority ?? '').toLowerCase()];
                   return (
-                    <View key={chore.id} style={styles.choreCard}>
-                      <View style={[styles.stripe, { backgroundColor: info.stripe }]} />
-                      <View style={styles.choreBody}>
-                        <Text style={[styles.choreTitle, chore.status === 'approved' && styles.choreTitleDone]} numberOfLines={2}>
-                          {chore.title}
-                        </Text>
-                        <View style={styles.chipRow}>
-                          <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
-                            <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {chore.coins ?? 0}</Text>
-                          </View>
-                          {pr && (
-                            <View style={[styles.chip, { backgroundColor: pr.bg }]}>
-                              <Text style={[styles.chipText, { color: pr.color }]}>{pr.label}</Text>
+                    <AnimatedEntry key={`${selectedDate}-${chore.id}`} index={index + 1} skip={reduceMotion}>
+                      <View style={styles.choreCard}>
+                        <View style={[styles.stripe, { backgroundColor: info.stripe }]} />
+                        <View style={styles.choreBody}>
+                          <Text style={[styles.choreTitle, chore.status === 'approved' && styles.choreTitleDone]} numberOfLines={2}>
+                            {chore.title}
+                          </Text>
+                          <View style={styles.chipRow}>
+                            <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
+                              <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {chore.coins ?? 0}</Text>
                             </View>
-                          )}
-                          {isChoreOptional(chore) && (
-                            <View style={[styles.chip, { backgroundColor: '#EFEAFF' }]}>
-                              <Text style={[styles.chipText, { color: '#7B61FF' }]}>Optional</Text>
+                            {pr && (
+                              <View style={[styles.chip, { backgroundColor: pr.bg }]}>
+                                <Text style={[styles.chipText, { color: pr.color }]}>{pr.label}</Text>
+                              </View>
+                            )}
+                            {isChoreOptional(chore) && (
+                              <View style={[styles.chip, { backgroundColor: '#EFEAFF' }]}>
+                                <Text style={[styles.chipText, { color: '#7B61FF' }]}>Optional</Text>
+                              </View>
+                            )}
+                            <View style={[styles.chip, { backgroundColor: info.bg }]}>
+                              <Text style={[styles.chipText, { color: info.color }]}>{info.label}</Text>
                             </View>
-                          )}
-                          <View style={[styles.chip, { backgroundColor: info.bg }]}>
-                            <Text style={[styles.chipText, { color: info.color }]}>{info.label}</Text>
                           </View>
                         </View>
                       </View>
-                    </View>
+                    </AnimatedEntry>
                   );
                 })
               )}
@@ -247,25 +373,25 @@ export default function ChildCalendarScreen() {
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/child-dashboard')}>
+        <PressableScale style={styles.navItem} onPress={() => router.replace('/child-dashboard')}>
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={styles.navText}>Chores</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navItem, styles.navActive]}>
+        </PressableScale>
+        <PressableScale style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>📅</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Calendar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/child-rewards')}>
+        </PressableScale>
+        <PressableScale style={styles.navItem} onPress={() => router.replace('/child-rewards')}>
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={styles.navText}>Rewards</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3FBF9' },
+  container: { flex: 1, backgroundColor: '#EAF9F6' },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
   header: { marginBottom: 14 },
   title: { fontSize: 26, fontWeight: '900', color: '#1F2D2B' },
@@ -274,12 +400,17 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, color: '#6B7C79', fontWeight: '600' },
   calendarCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 22,
+    borderRadius: 24,
     padding: 8,
     borderWidth: 1.5,
     borderColor: '#E3F1EE',
     marginBottom: 18,
     overflow: 'hidden',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
   },
   legendRow: {
     flexDirection: 'row',
@@ -291,8 +422,20 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendText: { fontSize: 12, fontWeight: '600', color: '#6B7C79' },
+  dayHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  dayHeaderText: { flex: 1 },
   dayTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B' },
   daySub: { fontSize: 13, color: '#6B7C79', fontWeight: '600', marginTop: 2 },
+  summaryText: { fontSize: 13, color: '#12756D', fontWeight: '800', marginTop: 4 },
+  todayBtn: {
+    backgroundColor: '#E6F8F6',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: '#BFE8E3',
+  },
+  todayBtnText: { fontSize: 13, fontWeight: '800', color: '#0F7F76' },
   list: { gap: 12, marginTop: 12 },
   emptyBox: {
     alignItems: 'center',
@@ -312,6 +455,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1.5,
     borderColor: '#E3F1EE',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 2,
   },
   stripe: { width: 8 },
   choreBody: { flex: 1, padding: 14 },
