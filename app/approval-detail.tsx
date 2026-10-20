@@ -2,20 +2,65 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc, increment, updateDoc } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Modal, Platform,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native';
+import PressableScale from '../components/PressableScale';
 import { db } from '../config/firebase';
 import { sendPushNotification } from '../utils/notifications';
 import { deletePhotoFromStorage } from '../utils/photoCleanup';
+
+const PRIORITY_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  low: { label: '🟢 Low', bg: '#E0FFF4', color: '#2A9D8F' },
+  medium: { label: '🟡 Medium', bg: '#FFF3CD', color: '#B7791F' },
+  high: { label: '🔴 High', bg: '#FFE5E5', color: '#E63946' },
+};
+
+// Slides up and fades in, staggered by index. Skips the motion when Reduce Motion is on.
+function AnimatedEntry({
+  index,
+  skip,
+  children,
+}: {
+  index: number;
+  skip: boolean;
+  children: React.ReactNode;
+}) {
+  const anim = useRef(new Animated.Value(skip ? 1 : 0)).current;
+  useEffect(() => {
+    if (skip) {
+      anim.setValue(1);
+      return;
+    }
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 420,
+      delay: Math.min(index, 8) * 80,
+      easing: Easing.out(Easing.back(1.1)),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index, skip]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export default function ApprovalDetailScreen() {
   const router = useRouter();
@@ -36,7 +81,16 @@ export default function ApprovalDetailScreen() {
   const [loading, setLoading] = useState(false);
   const [photoURL, setPhotoURL] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const { width: winW, height: winH } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const loadSubmission = async () => {
@@ -202,14 +256,10 @@ export default function ApprovalDetailScreen() {
     );
   };
 
-  const PRIORITY_COLORS: Record<string, string> = {
-    low: '#66BB6A',
-    medium: '#F4B942',
-    high: '#E63946',
-  };
-
   const isAiApproved = aiApproved === 'true';
-  const confidencePercent = Math.round(parseFloat(aiConfidence as string) * 100);
+  const parsedConfidence = parseFloat(aiConfidence as string);
+  const confidencePercent = Number.isFinite(parsedConfidence) ? Math.round(parsedConfidence * 100) : 0;
+  const priorityStyle = PRIORITY_STYLES[String(priority ?? 'medium').toLowerCase()] || PRIORITY_STYLES.medium;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -218,101 +268,128 @@ export default function ApprovalDetailScreen() {
         style={styles.inner}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={[styles.scroll, { paddingBottom: 120 }]}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           showsVerticalScrollIndicator={false}>
 
-            {/* Header */}
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()}>
-                <Text style={styles.backText}>← Back</Text>
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Review Chore</Text>
-              <View style={{ width: 40 }} />
-            </View>
+          {/* Top bar */}
+          <View style={styles.topBar}>
+            <PressableScale
+              style={styles.backBtn}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back">
+              <Text style={styles.backText}>← Back</Text>
+            </PressableScale>
+          </View>
 
-            {/* Child Info */}
-            <View style={styles.childCard}>
-              <View style={styles.childLeft}>
-                <View style={styles.childAvatarCircle}>
-                  <Text style={styles.childAvatarEmoji}>{childAvatar}</Text>
+          {/* Hero: who submitted what */}
+          <AnimatedEntry index={0} skip={reduceMotion}>
+            <View style={styles.hero}>
+              <View style={styles.heroTopRow}>
+                <View style={styles.heroLeft}>
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarEmoji}>{childAvatar || '👧'}</Text>
+                  </View>
+                  <View style={styles.heroNameBlock}>
+                    <Text style={styles.heroGreeting}>Review chore</Text>
+                    <Text style={styles.heroName} numberOfLines={1}>{childName}</Text>
+                    <Text style={styles.heroSub}>Submitted {submittedAt}</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.childName}>{childName}</Text>
-                  <Text style={styles.submittedAt}>Submitted {submittedAt}</Text>
-                </View>
-              </View>
-              <View style={[styles.priorityBadge, {
-                backgroundColor: PRIORITY_COLORS[priority as string] + '20',
-                borderColor: PRIORITY_COLORS[priority as string]
-              }]}>
-                <Text style={[styles.priorityText, { color: PRIORITY_COLORS[priority as string] }]}>
-                  {(priority as string).toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            {/* Chore Details */}
-            <View style={styles.choreCard}>
-              <Text style={styles.choreTitle}>{choreTitle}</Text>
-              <View style={styles.coinsRow}>
-                <Text style={styles.coinsLabel}>Reward</Text>
-                <View style={styles.coinsBadge}>
-                  <Text style={styles.coinsText}>🪙 {choreCoins} coins</Text>
+                <View style={[styles.heroPriority, { backgroundColor: priorityStyle.bg }]}>
+                  <Text style={[styles.heroPriorityText, { color: priorityStyle.color }]}>
+                    {priorityStyle.label}
+                  </Text>
                 </View>
               </View>
-            </View>
 
-            {/* AI Result */}
-            <Text style={styles.sectionLabel}>ChorePal Verification Result</Text>
+              <View style={styles.heroChoreRow}>
+                <Text style={styles.heroChoreTitle} numberOfLines={3}>{choreTitle}</Text>
+                <View style={styles.heroCoins}>
+                  <Text style={styles.heroCoinsEmoji}>🪙</Text>
+                  <Text style={styles.heroCoinsValue}>{choreCoins}</Text>
+                </View>
+              </View>
+            </View>
+          </AnimatedEntry>
+
+          {/* AI Result */}
+          <AnimatedEntry index={1} skip={reduceMotion}>
+            <Text style={styles.sectionTitle}>ChorePal Verification</Text>
             <View style={[
               styles.aiCard,
               isAiApproved ? styles.aiCardApproved : styles.aiCardWarning
             ]}>
               <View style={styles.aiHeader}>
-                <Text style={styles.aiEmoji}>{isAiApproved ? '🤖✅' : '🤖⚠️'}</Text>
+                <View style={[styles.aiEmojiBox, { backgroundColor: isAiApproved ? '#E0FFF4' : '#FFF3CD' }]}>
+                  <Text style={styles.aiEmoji}>{isAiApproved ? '🤖✅' : '🤖⚠️'}</Text>
+                </View>
                 <View style={styles.aiInfo}>
                   <Text style={styles.aiStatus}>
-                    {isAiApproved ? 'ChorePal Approved' : 'Needs Review'}
+                    {isAiApproved ? 'ChorePal approved' : 'Needs your review'}
                   </Text>
-                  <Text style={styles.aiConfidence}>
-                    Confidence: {confidencePercent}%
-                  </Text>
+                  <View style={styles.confidenceTrack}>
+                    <View
+                      style={[
+                        styles.confidenceFill,
+                        {
+                          width: `${Math.max(0, Math.min(100, confidencePercent))}%`,
+                          backgroundColor: isAiApproved ? '#4ECDC4' : '#F4B942',
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.aiConfidence}>Confidence: {confidencePercent}%</Text>
                 </View>
               </View>
-              <Text style={styles.aiDescription}>{aiDescription}</Text>
+              {!!aiDescription && <Text style={styles.aiDescription}>{aiDescription}</Text>}
             </View>
+          </AnimatedEntry>
 
-            {/* Photo */}
-            <Text style={styles.sectionLabel}>Submitted Photo</Text>
+          {/* Photo */}
+          <AnimatedEntry index={2} skip={reduceMotion}>
+            <Text style={styles.sectionTitle}>Submitted photo</Text>
             {loadingPhoto ? (
               <View style={styles.photoLoading}>
                 <ActivityIndicator size="large" color="#4ECDC4" />
                 <Text style={styles.photoLoadingText}>Loading photo...</Text>
               </View>
             ) : photoURL ? (
-              <Image
-                source={{ uri: photoURL }}
-                style={styles.photo}
-                resizeMode="cover"
-              />
+              <PressableScale
+                style={styles.photoCard}
+                onPress={() => setPhotoViewerVisible(true)}
+                accessibilityRole="imagebutton"
+                accessibilityLabel="View photo full screen">
+                <Image
+                  source={{ uri: photoURL }}
+                  style={styles.photo}
+                  resizeMode="cover"
+                />
+                <View style={styles.expandHint}>
+                  <Text style={styles.expandHintText}>🔍 Tap to view full photo</Text>
+                </View>
+              </PressableScale>
             ) : (
               <View style={styles.noPhoto}>
+                <Text style={styles.noPhotoEmoji}>📷</Text>
                 <Text style={styles.noPhotoText}>No photo available</Text>
               </View>
             )}
-
             <Text style={styles.photoNote}>
               🔒 This photo is deleted as soon as you approve or reject.
             </Text>
+          </AnimatedEntry>
 
-            {/* Comment */}
-            <Text style={styles.sectionLabel}>Leave a Comment (optional)</Text>
+          {/* Comment */}
+          <AnimatedEntry index={3} skip={reduceMotion}>
+            <Text style={styles.sectionTitle}>Leave a comment</Text>
+            <Text style={styles.sectionHint}>Optional. Your child will see this.</Text>
             <TextInput
               style={styles.commentInput}
               placeholder="e.g. Great job! Next time make sure to tuck in the corners 😊"
-              placeholderTextColor="#aaa"
+              placeholderTextColor="#9AA9A6"
               value={comment}
               onChangeText={setComment}
               multiline
@@ -320,197 +397,297 @@ export default function ApprovalDetailScreen() {
               onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
               textAlignVertical="top"
             />
+          </AnimatedEntry>
 
-            {/* Action Buttons */}
+          {/* Action Buttons */}
+          <AnimatedEntry index={4} skip={reduceMotion}>
             <View style={styles.actionsRow}>
-              <TouchableOpacity
+              <PressableScale
                 style={[styles.rejectBtn, loading && styles.btnDisabled]}
-                onPress={handleReject}
-                disabled={loading}>
+                onPress={loading ? undefined : handleReject}
+                disabled={loading}
+                accessibilityRole="button"
+                accessibilityLabel="Reject chore">
                 <Text style={styles.rejectBtnText}>❌ Reject</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </PressableScale>
+              <PressableScale
                 style={[styles.approveBtn, loading && styles.btnDisabled]}
-                onPress={handleApprove}
-                disabled={loading}>
-                <Text style={styles.approveBtnText}>
-                  {loading ? 'Processing...' : '✅ Approve'}
-                </Text>
-              </TouchableOpacity>
+                onPress={loading ? undefined : handleApprove}
+                disabled={loading}
+                accessibilityRole="button"
+                accessibilityLabel="Approve chore">
+                {loading ? (
+                  <View style={styles.processingRow}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={styles.approveBtnText}>Processing...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.approveBtnText}>✅ Approve</Text>
+                )}
+              </PressableScale>
             </View>
+          </AnimatedEntry>
 
-          </ScrollView>
+        </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Full-screen photo viewer */}
+      <Modal
+        visible={photoViewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoViewerVisible(false)}>
+        <View style={styles.viewerOverlay}>
+          {/* Pinch to zoom works on iOS; Android shows the full photo without zoom */}
+          <ScrollView
+            style={styles.viewerScroll}
+            contentContainerStyle={styles.viewerContent}
+            maximumZoomScale={4}
+            minimumZoomScale={1}
+            centerContent
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}>
+            {photoURL && (
+              <Image
+                source={{ uri: photoURL }}
+                style={{ width: winW, height: winH * 0.8 }}
+                resizeMode="contain"
+              />
+            )}
+          </ScrollView>
+
+          <SafeAreaView style={styles.viewerTopBar} pointerEvents="box-none">
+            <PressableScale
+              style={styles.viewerCloseBtn}
+              onPress={() => setPhotoViewerVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close photo">
+              <Text style={styles.viewerCloseText}>✕ Close</Text>
+            </PressableScale>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: '#F3FBF9' },
   inner: { flex: 1 },
-  scroll: { paddingBottom: 40 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-  },
-  backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#2D2D2D' },
-  childCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: 24,
-    marginTop: 20,
-    backgroundColor: '#F0FFFE',
-    borderRadius: 16,
-    padding: 16,
+  scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 120 },
+
+  // Top bar
+  topBar: { flexDirection: 'row', marginBottom: 12 },
+  backBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderWidth: 1.5,
-    borderColor: '#4ECDC4',
-    marginBottom: 16,
+    borderColor: '#E3F1EE',
   },
-  childLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  childAvatarCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#4ECDC4',
+  backText: { fontSize: 14, color: '#0F7F76', fontWeight: '800' },
+
+  // Hero
+  hero: {
+    backgroundColor: '#0F7F76',
+    borderRadius: 28,
+    padding: 20,
+    gap: 18,
+    marginBottom: 22,
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  heroLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
+  avatarCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  childAvatarEmoji: { fontSize: 26 },
-  childName: { fontSize: 16, fontWeight: '800', color: '#2D2D2D' },
-  submittedAt: { fontSize: 12, color: '#888', marginTop: 2 },
-  priorityBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1.5,
+  avatarEmoji: { fontSize: 32 },
+  heroNameBlock: { flexShrink: 1 },
+  heroGreeting: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+  heroName: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
+  heroSub: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  heroPriority: { borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  heroPriorityText: { fontSize: 12, fontWeight: '800' },
+  heroChoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
-  priorityText: { fontSize: 12, fontWeight: '700' },
-  choreCard: {
-    marginHorizontal: 24,
-    backgroundColor: '#F9F9F9',
+  heroChoreTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
+  heroCoins: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFD479',
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#EEE',
-  },
-  choreTitle: { fontSize: 18, fontWeight: '800', color: '#2D2D2D', marginBottom: 10 },
-  coinsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  coinsLabel: { fontSize: 14, color: '#888', fontWeight: '600' },
-  coinsBadge: {
-    backgroundColor: '#FFF8E1',
-    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#F4B942',
+    paddingVertical: 8,
   },
-  coinsText: { fontSize: 14, fontWeight: '700', color: '#F4B942' },
+  heroCoinsEmoji: { fontSize: 18 },
+  heroCoinsValue: { fontSize: 18, fontWeight: '900', color: '#7A4F0B' },
+
+  // Sections
+  sectionTitle: { fontSize: 20, fontWeight: '900', color: '#1F2D2B', marginBottom: 10 },
+  sectionHint: { fontSize: 13, fontWeight: '600', color: '#6B7C79', marginTop: -6, marginBottom: 10 },
+
+  // AI card
   aiCard: {
-    marginHorizontal: 24,
-    borderRadius: 16,
+    borderRadius: 22,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 22,
     borderWidth: 1.5,
-    gap: 8,
+    gap: 10,
+    backgroundColor: '#FFFFFF',
   },
-  aiCardApproved: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
-  aiCardWarning: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
+  aiCardApproved: { borderColor: '#4ECDC4', backgroundColor: '#F4FFFB' },
+  aiCardWarning: { borderColor: '#F4B942', backgroundColor: '#FFFBEF' },
   aiHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  aiEmoji: { fontSize: 32 },
+  aiEmojiBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiEmoji: { fontSize: 22 },
   aiInfo: { flex: 1 },
-  aiStatus: { fontSize: 16, fontWeight: '800', color: '#2D2D2D' },
-  aiConfidence: { fontSize: 13, color: '#888', marginTop: 2 },
-  aiDescription: { fontSize: 13, color: '#444', lineHeight: 18 },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#444',
-    marginBottom: 10,
-    paddingHorizontal: 24,
+  aiStatus: { fontSize: 17, fontWeight: '800', color: '#1F2D2B' },
+  confidenceTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E3EAE9',
+    marginTop: 8,
+    overflow: 'hidden',
   },
-  photo: {
-    width: '100%',
-    height: 280,
-    marginBottom: 20,
-    backgroundColor: '#F0F0F0',
+  confidenceFill: { height: 6, borderRadius: 3 },
+  aiConfidence: { fontSize: 12, color: '#6B7C79', fontWeight: '700', marginTop: 5 },
+  aiDescription: { fontSize: 14, color: '#3D4D4A', lineHeight: 20, fontWeight: '500' },
+
+  // Photo
+  photoCard: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
+  photo: { width: '100%', height: 300, backgroundColor: '#EEF2F1' },
+  expandHint: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  expandHintText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+
+  // Full-screen viewer
+  viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' },
+  viewerScroll: { flex: 1 },
+  viewerContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
+  viewerTopBar: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'flex-end' },
+  viewerCloseBtn: {
+    marginTop: 10,
+    marginRight: 18,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  viewerCloseText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   photoLoading: {
     height: 200,
-    marginHorizontal: 24,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
     gap: 8,
   },
-  photoLoadingText: { fontSize: 14, color: '#888' },
+  photoLoadingText: { fontSize: 14, color: '#6B7C79', fontWeight: '600' },
   noPhoto: {
-    height: 120,
-    marginHorizontal: 24,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
+    height: 130,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    gap: 4,
   },
-  noPhotoText: { color: '#888', fontSize: 14 },
+  noPhotoEmoji: { fontSize: 30 },
+  noPhotoText: { color: '#6B7C79', fontSize: 14, fontWeight: '700' },
   photoNote: {
     fontSize: 12,
     color: '#6B7C79',
     fontWeight: '600',
-    paddingHorizontal: 24,
-    marginTop: -10,
-    marginBottom: 18,
+    marginTop: 10,
+    marginBottom: 22,
+    textAlign: 'center',
   },
+
+  // Comment
   commentInput: {
     borderWidth: 1.5,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 13,
-    fontSize: 14,
-    color: '#333',
-    backgroundColor: '#F9F9F9',
+    borderColor: '#DDF1EE',
+    borderRadius: 18,
+    padding: 14,
+    fontSize: 15,
+    color: '#1F2D2B',
+    backgroundColor: '#FFFFFF',
     marginBottom: 24,
-    minHeight: 90,
-    marginHorizontal: 24,
+    minHeight: 100,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 24,
-  },
+
+  // Actions
+  actionsRow: { flexDirection: 'row', gap: 12 },
   rejectBtn: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#E63946',
   },
-  rejectBtnText: { color: '#E63946', fontSize: 16, fontWeight: '700' },
+  rejectBtnText: { color: '#E63946', fontSize: 16, fontWeight: '800' },
   approveBtn: {
     flex: 1,
     backgroundColor: '#4ECDC4',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 18,
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#4ECDC4',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
-  approveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  approveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  processingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   btnDisabled: { opacity: 0.6 },
 });

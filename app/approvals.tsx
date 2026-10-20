@@ -188,7 +188,7 @@ export default function ApprovalsScreen() {
                     ? 'Checking for submissions...'
                     : submissions.length === 0
                       ? 'Nothing waiting for you'
-                      : `${submissions.length} chore${submissions.length === 1 ? '' : 's'} waiting${aiOkCount > 0 ? ` · ${aiOkCount} ChorePal-verified` : ''}`}
+                      : `${submissions.length} chore${submissions.length === 1 ? '' : 's'} waiting`}
                 </Text>
               </View>
 
