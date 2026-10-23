@@ -10,9 +10,12 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Alert,
+  Animated,
+  Easing,
   Linking,
   Modal,
   SafeAreaView,
@@ -21,9 +24,9 @@ import {
   Switch,
   Text,
   TextInput,
-  TouchableOpacity,
   View
 } from 'react-native';
+import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
 
 import { deleteAllFamilyData } from '../utils/deleteFamilyData';
@@ -75,16 +78,91 @@ const FAQ_ITEMS = [
   },
 ];
 
+// Slides up and fades in, staggered by index. Skips the motion when Reduce Motion is on.
+function AnimatedEntry({
+  index,
+  skip,
+  children,
+}: {
+  index: number;
+  skip: boolean;
+  children: React.ReactNode;
+}) {
+  const anim = useRef(new Animated.Value(skip ? 1 : 0)).current;
+  useEffect(() => {
+    if (skip) {
+      anim.setValue(1);
+      return;
+    }
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 420,
+      delay: Math.min(index, 8) * 80,
+      easing: Easing.out(Easing.back(1.1)),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index, skip]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) }],
+      }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+type RowProps = {
+  icon: string;
+  label: string;
+  onPress: () => void;
+  tall?: boolean;
+  danger?: boolean;
+  last?: boolean;
+  tint?: string;
+};
+
+// One tappable settings row: icon, label, chevron
+function SettingsRow({ icon, label, onPress, tall, danger, last, tint }: RowProps) {
+  return (
+    <>
+      <PressableScale
+        style={[styles.row, tall && styles.rowTall]}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}>
+        <View style={styles.rowLeft}>
+          <View style={[styles.rowIconBox, { backgroundColor: danger ? '#FFE5E5' : tint || '#E6F8F6' }]}>
+            <Text style={styles.rowIcon}>{icon}</Text>
+          </View>
+          <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>{label}</Text>
+        </View>
+        <Text style={[styles.rowChevron, danger && { color: '#F2A3A9' }]}>›</Text>
+      </PressableScale>
+      {!last && <View style={styles.divider} />}
+    </>
+  );
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const [faqVisible, setFaqVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [profileName, setProfileName] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [savingNotifications, setSavingNotifications] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -100,6 +178,7 @@ export default function SettingsScreen() {
 
           const name = data.name || '';
           setProfileName(name);
+          setDisplayName(name);
 
           // Default to ON so the switch matches the parent dashboard, which registers
           // for push notifications unless this is explicitly false.
@@ -133,6 +212,7 @@ export default function SettingsScreen() {
         name: profileName.trim(),
       });
 
+      setDisplayName(profileName.trim());
       setEditProfileVisible(false);
 
       Alert.alert('Success', 'Your profile has been updated.');
@@ -340,103 +420,104 @@ export default function SettingsScreen() {
     );
   };
 
-  const SETTINGS_SECTIONS = [
+  const SETTINGS_SECTIONS: {
+    title: string;
+    tall?: boolean;
+    items: { icon: string; label: string; onPress: () => void; tint?: string }[];
+  }[] = [
     {
       title: 'Account',
       items: [
         { icon: '👤', label: 'Edit Profile', onPress: () => setEditProfileVisible(true) },
         { icon: '🔒', label: 'Change Password', onPress: handleChangePassword },
-        { icon: '🔔', label: 'Notifications', onPress: () => setNotificationsVisible(true) },
-      ]
+        { icon: '🔔', label: 'Notifications', onPress: () => setNotificationsVisible(true), tint: '#FFF4D6' },
+      ],
     },
     {
       title: 'Support',
+      tall: true,
       items: [
-        { icon: '❓', label: 'FAQ', onPress: () => setFaqVisible(true) },
-        { icon: '📧', label: 'Contact Us', onPress: handleContact },
-        { icon: '🔒', label: 'Privacy Policy', onPress: handlePrivacy },
+        { icon: '❓', label: 'Help & FAQ', onPress: () => setFaqVisible(true) },
+        { icon: '✉️', label: 'Contact Us', onPress: handleContact },
+        { icon: '🛡️', label: 'Privacy Policy', onPress: handlePrivacy },
         { icon: '📄', label: 'Terms of Service', onPress: handleTerms },
-      ]
+      ],
     },
     {
       title: 'App',
       items: [
-        { icon: '⭐', label: 'Rate ChorePal', onPress: () => Alert.alert('Thank you!', 'Rating will be available when the app is published.') },
+        { icon: '⭐', label: 'Rate ChorePal', onPress: () => Alert.alert('Thank you!', 'Rating will be available when the app is published.'), tint: '#FFF4D6' },
         { icon: 'ℹ️', label: 'App Version', onPress: () => Alert.alert('Version', 'ChorePal v1.0.0') },
-      ]
+      ],
     },
   ];
 
+  const email = auth.currentUser?.email || '';
+  const initial = (displayName || email || '?').charAt(0).toUpperCase();
+
   return (
     <SafeAreaView style={styles.container}>
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>
-              {auth.currentUser?.email?.charAt(0).toUpperCase() || '?'}
-            </Text>
-          </View>
-          <View>
-            <Text style={styles.profileEmail}>{auth.currentUser?.email || 'Parent'}</Text>
-            <Text style={styles.profileRole}>Parent Account</Text>
-          </View>
+        {/* Top bar: back arrow + centered title */}
+        <View style={styles.topBar}>
+          <PressableScale
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back">
+            <Text style={styles.backArrow}>←</Text>
+          </PressableScale>
+          <Text style={styles.topTitle}>Settings</Text>
+          <View style={styles.backBtnSpacer} />
         </View>
 
-        {/* Settings Sections */}
-        {SETTINGS_SECTIONS.map((section) => (
-          <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <View style={styles.sectionCard}>
-              {section.items.map((item, index) => (
-                <View key={item.label}>
-                  <TouchableOpacity
-                    style={styles.settingsItem}
-                    onPress={item.onPress}>
-                    <View style={styles.itemLeft}>
-                      <Text style={styles.itemIcon}>{item.icon}</Text>
-                      <Text style={styles.itemLabel}>{item.label}</Text>
-                    </View>
-                    <Text style={styles.itemArrow}>›</Text>
-                  </TouchableOpacity>
-                  {index < section.items.length - 1 && (
-                    <View style={styles.divider} />
-                  )}
-                </View>
-              ))}
+        {/* Parent info */}
+        <AnimatedEntry index={0} skip={reduceMotion}>
+          <View style={styles.profileRow}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>{initial}</Text>
+            </View>
+            <View style={styles.profileText}>
+              <Text style={styles.profileName} numberOfLines={1}>
+                {displayName || 'Parent'}
+              </Text>
+              <Text style={styles.profileEmail} numberOfLines={1}>
+                {email || 'Parent Account'}
+              </Text>
             </View>
           </View>
+        </AnimatedEntry>
+
+        {/* Account / Support / App sections */}
+        {SETTINGS_SECTIONS.map((section, sIndex) => (
+          <AnimatedEntry key={section.title} index={sIndex + 1} skip={reduceMotion}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <View style={styles.sectionCard}>
+                {section.items.map((item, index) => (
+                  <SettingsRow
+                    key={item.label}
+                    icon={item.icon}
+                    label={item.label}
+                    onPress={item.onPress}
+                    tall={section.tall}
+                    tint={item.tint}
+                    last={index === section.items.length - 1}
+                  />
+                ))}
+              </View>
+            </View>
+          </AnimatedEntry>
         ))}
 
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={styles.logoutBtnText}>🚪 Log Out</Text>
-        </TouchableOpacity>
-
-        {/* Version */}
-        <Text style={styles.versionText}>ChorePal v1.0.0</Text>
-
-        {/* Danger Zone — kept at the very bottom, away from everyday actions */}
-        <View style={styles.dangerZone}>
-          <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
-          <TouchableOpacity
-            style={styles.deleteAccountBtn}
-            onPress={handleDeleteAccount}
-          >
-            <Text style={styles.deleteAccountBtnText}>🗑️ Delete Account</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Log out + Delete account, kept together at the very bottom */}
+        <AnimatedEntry index={SETTINGS_SECTIONS.length + 1} skip={reduceMotion}>
+          <View style={[styles.sectionCard, styles.bottomCard]}>
+            <SettingsRow icon="🚪" label="Log Out" onPress={handleLogout} />
+            <SettingsRow icon="🗑️" label="Delete Account" onPress={handleDeleteAccount} danger last />
+          </View>
+        </AnimatedEntry>
 
       </ScrollView>
 
@@ -446,19 +527,16 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setEditProfileVisible(false)}
       >
-        <SafeAreaView style={styles.editProfileContainer}>
-
-          <View style={styles.editProfileHeader}>
-            <TouchableOpacity onPress={() => setEditProfileVisible(false)}>
-              <Text style={styles.backText}>← Back</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.headerTitle}>Edit Profile</Text>
-
-            <View style={{ width: 40 }} />
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <PressableScale style={styles.backBtn} onPress={() => setEditProfileVisible(false)}>
+              <Text style={styles.backArrow}>←</Text>
+            </PressableScale>
+            <Text style={styles.topTitle}>Edit Profile</Text>
+            <View style={styles.backBtnSpacer} />
           </View>
 
-          <View style={styles.editProfileContent}>
+          <View style={styles.modalContent}>
             <Text style={styles.inputLabel}>Name</Text>
 
             <TextInput
@@ -466,6 +544,7 @@ export default function SettingsScreen() {
               value={profileName}
               onChangeText={setProfileName}
               placeholder="Enter your name"
+              placeholderTextColor="#9AA9A6"
               autoCapitalize="words"
             />
 
@@ -473,21 +552,20 @@ export default function SettingsScreen() {
 
             <TextInput
               style={[styles.profileInput, styles.disabledInput]}
-              value={auth.currentUser?.email || ''}
+              value={email}
               editable={false}
             />
 
-            <TouchableOpacity
-              style={styles.saveProfileBtn}
-              onPress={handleSaveProfile}
+            <PressableScale
+              style={[styles.saveProfileBtn, savingProfile && { opacity: 0.6 }]}
+              onPress={savingProfile ? undefined : handleSaveProfile}
               disabled={savingProfile}
             >
               <Text style={styles.saveProfileBtnText}>
                 {savingProfile ? 'Saving...' : 'Save Changes'}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
-
         </SafeAreaView>
       </Modal>
 
@@ -497,19 +575,16 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setNotificationsVisible(false)}
       >
-        <SafeAreaView style={styles.notificationsContainer}>
-
-          <View style={styles.notificationsHeader}>
-            <TouchableOpacity onPress={() => setNotificationsVisible(false)}>
-              <Text style={styles.backText}>← Back</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.headerTitle}>Notifications</Text>
-
-            <View style={{ width: 40 }} />
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <PressableScale style={styles.backBtn} onPress={() => setNotificationsVisible(false)}>
+              <Text style={styles.backArrow}>←</Text>
+            </PressableScale>
+            <Text style={styles.topTitle}>Notifications</Text>
+            <View style={styles.backBtnSpacer} />
           </View>
 
-          <View style={styles.notificationsContent}>
+          <View style={styles.modalContent}>
 
             <View style={styles.notificationSetting}>
               <View style={styles.notificationTextContainer}>
@@ -526,11 +601,12 @@ export default function SettingsScreen() {
                 value={notificationsEnabled}
                 onValueChange={handleNotificationsToggle}
                 disabled={savingNotifications}
+                trackColor={{ false: '#D5DEDC', true: '#4ECDC4' }}
               />
             </View>
 
             {/* Home reminders — opens the set-home screen */}
-            <TouchableOpacity
+            <PressableScale
               style={styles.homeReminderSetting}
               onPress={() => {
                 setNotificationsVisible(false);
@@ -546,15 +622,14 @@ export default function SettingsScreen() {
                   leave. Set your home location here.
                 </Text>
               </View>
-              <Text style={styles.itemArrow}>›</Text>
-            </TouchableOpacity>
+              <Text style={styles.rowChevron}>›</Text>
+            </PressableScale>
 
             <Text style={styles.notificationNote}>
               You can also change notification permissions later in your phones settings.
             </Text>
 
           </View>
-
         </SafeAreaView>
       </Modal>
 
@@ -563,22 +638,20 @@ export default function SettingsScreen() {
         visible={faqVisible}
         animationType="slide"
         onRequestClose={() => setFaqVisible(false)}>
-        <SafeAreaView style={styles.faqContainer}>
-
-          {/* FAQ Header */}
-          <View style={styles.faqHeader}>
-            <TouchableOpacity onPress={() => setFaqVisible(false)}>
-              <Text style={styles.backText}>← Back</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>FAQ</Text>
-            <View style={{ width: 40 }} />
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <PressableScale style={styles.backBtn} onPress={() => setFaqVisible(false)}>
+              <Text style={styles.backArrow}>←</Text>
+            </PressableScale>
+            <Text style={styles.topTitle}>Help & FAQ</Text>
+            <View style={styles.backBtnSpacer} />
           </View>
 
           <ScrollView contentContainerStyle={styles.faqScroll} showsVerticalScrollIndicator={false}>
             <Text style={styles.faqSubtitle}>Frequently Asked Questions</Text>
 
             {FAQ_ITEMS.map((item, index) => (
-              <TouchableOpacity
+              <PressableScale
                 key={index}
                 style={styles.faqItem}
                 onPress={() => setExpandedFaq(expandedFaq === index ? null : index)}>
@@ -591,16 +664,16 @@ export default function SettingsScreen() {
                 {expandedFaq === index && (
                   <Text style={styles.faqAnswer}>{item.answer}</Text>
                 )}
-              </TouchableOpacity>
+              </PressableScale>
             ))}
 
             {/* Contact Support */}
             <View style={styles.contactCard}>
               <Text style={styles.contactTitle}>Still have questions?</Text>
               <Text style={styles.contactSubtitle}>We are here to help!</Text>
-              <TouchableOpacity style={styles.contactBtn} onPress={handleContact}>
-                <Text style={styles.contactBtnText}>📧 Contact Support</Text>
-              </TouchableOpacity>
+              <PressableScale style={styles.contactBtn} onPress={handleContact}>
+                <Text style={styles.contactBtnText}>✉️ Contact Support</Text>
+              </PressableScale>
             </View>
 
           </ScrollView>
@@ -612,141 +685,201 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9F9F9' },
-  header: {
+  container: { flex: 1, backgroundColor: '#F3FBF9' },
+  scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 50 },
+
+  // Top bar (back arrow left, title centered)
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-    backgroundColor: '#fff',
+    marginBottom: 18,
   },
-  backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#2D2D2D' },
-  scroll: { padding: 24, paddingBottom: 40 },
-
-  // Profile Card
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#EEE',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  profileAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4ECDC4',
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileAvatarText: { fontSize: 24, fontWeight: '800', color: '#fff' },
-  profileEmail: { fontSize: 16, fontWeight: '700', color: '#2D2D2D' },
-  profileRole: { fontSize: 13, color: '#888', marginTop: 2 },
+  backBtnSpacer: { width: 42 },
+  backArrow: { fontSize: 20, color: '#0F7F76', fontWeight: '800' },
+  topTitle: { fontSize: 24, fontWeight: '900', color: '#1F2D2B' },
+
+  // Parent info
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 22,
+    paddingHorizontal: 4,
+  },
+  profileAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2.5,
+    borderColor: '#4ECDC4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarText: { fontSize: 26, fontWeight: '900', color: '#0F7F76' },
+  profileText: { flex: 1 },
+  profileName: { fontSize: 22, fontWeight: '900', color: '#1F2D2B' },
+  profileEmail: { fontSize: 14, fontWeight: '600', color: '#6B7C79', marginTop: 2 },
 
   // Sections
-  section: { marginBottom: 20 },
+  section: { marginBottom: 18 },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#888',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#7C8B88',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: 8,
-    marginLeft: 4,
+    marginLeft: 6,
   },
   sectionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#EEE',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
     overflow: 'hidden',
+    shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  settingsItem: {
+  bottomCard: { marginTop: 6 },
+
+  // Rows
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-  },
-  itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  itemIcon: { fontSize: 20 },
-  itemLabel: { fontSize: 15, fontWeight: '600', color: '#2D2D2D' },
-  itemArrow: { fontSize: 20, color: '#CCC' },
-  divider: { height: 1, backgroundColor: '#F0F0F0', marginHorizontal: 16 },
-
-  // Logout
-  logoutBtn: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: '#E63946',
-  },
-  logoutBtnText: { color: '#E63946', fontSize: 16, fontWeight: '700' },
-  versionText: { textAlign: 'center', color: '#CCC', fontSize: 13 },
-
-  // Danger Zone
-  dangerZone: {
-    marginTop: 56,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    alignItems: 'center',
-  },
-  dangerZoneTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#BBB',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  deleteAccountBtn: {
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 16,
   },
-  deleteAccountBtnText: {
-    color: '#E63946',
+  rowTall: { paddingVertical: 22 },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flexShrink: 1 },
+  rowIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowIcon: { fontSize: 20 },
+  rowLabel: { fontSize: 16, fontWeight: '800', color: '#1F2D2B' },
+  rowLabelDanger: { color: '#E63946' },
+  rowChevron: { fontSize: 26, color: '#9FD6CD', fontWeight: '700' },
+  divider: { height: 1.5, backgroundColor: '#EEF5F4', marginHorizontal: 16 },
+
+  // Shared modal layout
+  modalContainer: { flex: 1, backgroundColor: '#F3FBF9' },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  modalContent: { paddingHorizontal: 18, paddingTop: 8 },
+
+  // Edit Profile
+  inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '800',
+    color: '#1F2D2B',
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  profileInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#DDF1EE',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#1F2D2B',
+  },
+  disabledInput: {
+    backgroundColor: '#EEF2F1',
+    color: '#8A9996',
+  },
+  saveProfileBtn: {
+    backgroundColor: '#4ECDC4',
+    borderRadius: 18,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 28,
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  saveProfileBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  // Notifications
+  notificationSetting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    padding: 18,
+  },
+  homeReminderSetting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
+    padding: 18,
+    marginTop: 14,
+  },
+  homeReminderIcon: { fontSize: 24 },
+  notificationTextContainer: { flex: 1, paddingRight: 16 },
+  notificationTitle: { fontSize: 16, fontWeight: '800', color: '#1F2D2B' },
+  notificationDescription: {
+    fontSize: 13,
+    color: '#6B7C79',
+    marginTop: 5,
+    lineHeight: 18,
+  },
+  notificationNote: {
+    fontSize: 12,
+    color: '#8A9996',
+    marginTop: 16,
+    lineHeight: 18,
   },
 
   // FAQ
-  faqContainer: { flex: 1, backgroundColor: '#FFFFFF' },
-  faqHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-  },
-  faqScroll: { padding: 24, paddingBottom: 40 },
-  faqSubtitle: { fontSize: 15, color: '#888', marginBottom: 20 },
+  faqScroll: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 40 },
+  faqSubtitle: { fontSize: 15, color: '#6B7C79', fontWeight: '600', marginBottom: 16 },
   faqItem: {
-    backgroundColor: '#F9F9F9',
-    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#EEE',
+    borderWidth: 1.5,
+    borderColor: '#E3F1EE',
   },
   faqQuestion: {
     flexDirection: 'row',
@@ -754,20 +887,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  faqQuestionText: { flex: 1, fontSize: 15, fontWeight: '700', color: '#2D2D2D' },
+  faqQuestionText: { flex: 1, fontSize: 15, fontWeight: '800', color: '#1F2D2B' },
   faqArrow: { fontSize: 18, color: '#4ECDC4', fontWeight: '700' },
   faqAnswer: {
     fontSize: 14,
-    color: '#666',
+    color: '#5B6B68',
     marginTop: 12,
     lineHeight: 22,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
+    borderTopWidth: 1.5,
+    borderTopColor: '#EEF5F4',
     paddingTop: 12,
   },
   contactCard: {
     backgroundColor: '#F0FFFE',
-    borderRadius: 16,
+    borderRadius: 22,
     padding: 24,
     alignItems: 'center',
     marginTop: 8,
@@ -775,126 +908,14 @@ const styles = StyleSheet.create({
     borderColor: '#4ECDC4',
     gap: 8,
   },
-  contactTitle: { fontSize: 18, fontWeight: '800', color: '#2D2D2D' },
-  contactSubtitle: { fontSize: 14, color: '#888' },
+  contactTitle: { fontSize: 18, fontWeight: '900', color: '#1F2D2B' },
+  contactSubtitle: { fontSize: 14, color: '#6B7C79', fontWeight: '600' },
   contactBtn: {
     backgroundColor: '#4ECDC4',
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 24,
     paddingVertical: 12,
     marginTop: 8,
   },
-  contactBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-
-  // Edit Profile
-  editProfileContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  editProfileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-  },
-  editProfileContent: {
-    padding: 24,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2D2D2D',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  profileInput: {
-    backgroundColor: '#F9F9F9',
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#2D2D2D',
-  },
-  disabledInput: {
-    backgroundColor: '#F1F1F1',
-    color: '#888',
-  },
-  saveProfileBtn: {
-    backgroundColor: '#4ECDC4',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 28,
-  },
-  saveProfileBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  // Notifications
-  notificationsContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  notificationsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-  },
-  notificationsContent: {
-    padding: 24,
-  },
-  notificationSetting: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 14,
-    padding: 18,
-  },
-  homeReminderSetting: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#F9F9F9',
-    borderRadius: 14,
-    padding: 18,
-    marginTop: 14,
-  },
-  homeReminderIcon: {
-    fontSize: 24,
-  },
-  notificationTextContainer: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2D2D2D',
-  },
-  notificationDescription: {
-    fontSize: 13,
-    color: '#777',
-    marginTop: 5,
-    lineHeight: 18,
-  },
-  notificationNote: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 16,
-    lineHeight: 18,
-  },
+  contactBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
 });
