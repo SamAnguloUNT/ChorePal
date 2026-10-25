@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -24,6 +24,7 @@ import PalMascot from '../components/PalMascot';
 import PressableScale from '../components/PressableScale';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
+import { ChildTheme, useChildTheme } from '../utils/childTheme';
 import { registerForPushNotifications, sendPushNotification } from '../utils/notifications';
 import { deletePhotoFromStorage } from '../utils/photoCleanup';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
@@ -113,6 +114,8 @@ function AnimatedEntry({ index, children }: { index: number; children: React.Rea
 
 export default function ChildDashboard() {
   const router = useRouter();
+  const { theme, themeKey } = useChildTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [childData, setChildData] = useState<any>(null);
   const [chores, setChores] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -164,7 +167,10 @@ export default function ChildDashboard() {
 
       // Asks for permission AND saves this child's push token to their children doc,
       // so the parent can send approve/reject notifications to this device.
-      registerForPushNotifications(child.id, 'child');
+      // Skipped when the child turned notifications off in Settings.
+      if (child.notificationsEnabled !== false) {
+        registerForPushNotifications(child.id, 'child');
+      }
 
       // FIX: Without a parentId we can't tell which family this child belongs to,
       // and querying with `undefined` would throw. Show no chores instead of
@@ -361,7 +367,7 @@ export default function ChildDashboard() {
   // "Don't forget your chores" on leaving. Foreground-only (works in Expo Go).
   // `homeLocation` is copied onto the child doc by the parent app.
   useHomeGeofence(
-    childData?.homeLocation,
+    childData?.notificationsEnabled === false ? undefined : childData?.homeLocation,
     requiredChores.filter(c => !c.completed).length
   );
 
@@ -543,7 +549,7 @@ export default function ChildDashboard() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Fun animated background: floating stars, bubbles and coins (behind everything) */}
-      {!reduceMotion && <FloatingBackground />}
+      {!reduceMotion && <FloatingBackground themeKey={themeKey} />}
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -552,8 +558,8 @@ export default function ChildDashboard() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#0F7F76"
-            colors={['#0F7F76']}
+            tintColor={theme.primaryDark}
+            colors={[theme.primaryDark]}
           />
         }>
 
@@ -578,6 +584,13 @@ export default function ChildDashboard() {
               </Animated.Text>
               <Text style={styles.coinPillValue}>{childData?.coinBalance || 0}</Text>
             </View>
+            <PressableScale
+              style={styles.logoutBtn}
+              onPress={() => router.push('/child-settings')}
+              accessibilityRole="button"
+              accessibilityLabel="Settings">
+              <Text style={styles.logoutBtnEmoji}>⚙️</Text>
+            </PressableScale>
             <PressableScale
               style={styles.logoutBtn}
               onPress={handleLogout}
@@ -646,7 +659,7 @@ export default function ChildDashboard() {
                 ? '#C9D6D4'
                 : optional
                   ? '#7B61FF'
-                  : priority?.color || '#4ECDC4';
+                  : priority?.color || theme.primary;
               return (
                 <Fragment key={chore.id}>
                   {/* Section header shown once, right before the first optional chore */}
@@ -824,7 +837,7 @@ export default function ChildDashboard() {
                     ? aiResult.isComplete
                       ? submitted
                         ? 'Your chore has been sent to your parent for final approval!'
-                        : 'AI is reviewing your photo...'
+                        : 'Reviewing your photo...'
                       : 'Please redo the chore and try again!'
                     : selectedChore?.completed
                       ? selectedChore?.verified
@@ -933,7 +946,7 @@ export default function ChildDashboard() {
                 {/* Buttons */}
                 {submitting ? (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#4ECDC4" />
+                    <ActivityIndicator size="large" color={theme.primary} />
                     <Text style={styles.loadingText}>Analyzing with AI... Please wait!</Text>
                   </View>
                 ) : aiResult && aiResult.isComplete && submitted ? (
@@ -983,7 +996,7 @@ export default function ChildDashboard() {
                       style={[styles.submitBtn, !photo && styles.submitBtnDisabled]}
                       onPress={submitVerification}
                       disabled={!photo}>
-                      <Text style={styles.submitBtnText}>Submit for AI Review ✅</Text>
+                      <Text style={styles.submitBtnText}>Submit for Review ✅</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -1005,9 +1018,9 @@ export default function ChildDashboard() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (t: ChildTheme) => StyleSheet.create({
   // Softer sky-to-mint feel; the floating background shows through.
-  container: { flex: 1, backgroundColor: '#EAF9F6' },
+  container: { flex: 1, backgroundColor: t.bg },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
 
   // Header
@@ -1017,23 +1030,23 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0F7F76',
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 3,
   },
   avatarSmallEmoji: { fontSize: 24 },
-  headerName: { fontSize: 22, fontWeight: '900', color: '#12403B', flexShrink: 1 },
+  headerName: { fontSize: 22, fontWeight: '900', color: t.text, flexShrink: 1 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   coinPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FFF4D6',
+    backgroundColor: t.coinBg,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1044,7 +1057,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(15,127,118,0.12)',
+    backgroundColor: t.tint,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1052,7 +1065,7 @@ const styles = StyleSheet.create({
 
   // Pal's speech bubble
   bubble: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 20,
     paddingVertical: 11,
     paddingHorizontal: 14,
@@ -1060,24 +1073,24 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#E3F1EE',
-    shadowColor: '#0F7F76',
+    borderColor: t.border,
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 2,
   },
-  bubbleText: { fontSize: 15, fontWeight: '800', color: '#12403B', textAlign: 'center' },
+  bubbleText: { fontSize: 15, fontWeight: '800', color: t.text, textAlign: 'center' },
   bubbleTail: {
     position: 'absolute',
     bottom: -9,
     alignSelf: 'center',
     width: 16,
     height: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRightWidth: 1.5,
     borderBottomWidth: 1.5,
-    borderColor: '#E3F1EE',
+    borderColor: t.border,
     transform: [{ rotate: '45deg' }],
   },
   palWrap: { alignItems: 'center', marginTop: 12 },
@@ -1085,43 +1098,43 @@ const styles = StyleSheet.create({
   // Progress under Pal
   progressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },
   dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#9FD6CD' },
+  dot: { width: 14, height: 14, borderRadius: 7, backgroundColor: t.card, borderWidth: 2, borderColor: t.primary },
   dotOn: { backgroundColor: '#F4B942', borderColor: '#F4B942' },
-  progressLabel: { fontSize: 14, fontWeight: '800', color: '#12756D' },
-  progressBarBg: { width: 120, height: 14, backgroundColor: '#D3EFEA', borderRadius: 7, overflow: 'hidden' },
+  progressLabel: { fontSize: 14, fontWeight: '800', color: t.primaryDark },
+  progressBarBg: { width: 120, height: 14, backgroundColor: t.tint, borderRadius: 7, overflow: 'hidden' },
   progressBarFill: { height: 14, backgroundColor: '#F4B942', borderRadius: 7 },
 
   // Chores
-  sectionTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B', marginBottom: 12 },
+  sectionTitle: { fontSize: 22, fontWeight: '900', color: t.text, marginBottom: 12 },
   choresList: { gap: 12 },
   noChores: {
     alignItems: 'center',
     paddingVertical: 36,
     paddingHorizontal: 24,
     gap: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: '#DDF1EE',
+    borderColor: t.border,
   },
   noChoresEmoji: { fontSize: 56 },
-  noChoresText: { fontSize: 18, fontWeight: '800', color: '#1F2D2B' },
-  noChoresHint: { fontSize: 14, color: '#6B7C79', textAlign: 'center' },
+  noChoresText: { fontSize: 18, fontWeight: '800', color: t.text },
+  noChoresHint: { fontSize: 14, color: t.muted, textAlign: 'center' },
   optionalHeader: { fontSize: 17, fontWeight: '800', color: '#7B61FF', marginTop: 12 },
   choreCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: '#E3F1EE',
-    shadowColor: '#0F7F76',
+    borderColor: t.border,
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 2,
   },
-  choreCardDone: { backgroundColor: '#F1F5F4' },
+  choreCardDone: { backgroundColor: t.divider },
   priorityStripe: { width: 8 },
   choreBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   statusCircle: {
@@ -1129,26 +1142,26 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     borderWidth: 2.5,
-    borderColor: '#4ECDC4',
-    backgroundColor: '#FFFFFF',
+    borderColor: t.primary,
+    backgroundColor: t.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   statusPending: { backgroundColor: '#FFF3CD', borderColor: '#F4B942' },
-  statusDone: { backgroundColor: '#4ECDC4', borderColor: '#4ECDC4' },
-  statusMark: { fontSize: 20, fontWeight: '900', color: '#FFFFFF' },
+  statusDone: { backgroundColor: t.primary, borderColor: t.primary },
+  statusMark: { fontSize: 20, fontWeight: '900', color: t.onPrimary },
   statusPendingMark: { fontSize: 18 },
   choreTextBlock: { flex: 1 },
-  choreTitle: { fontSize: 18, fontWeight: '800', color: '#1F2D2B' },
-  choreTitleDone: { textDecorationLine: 'line-through', color: '#8A9996' },
+  choreTitle: { fontSize: 18, fontWeight: '800', color: t.text },
+  choreTitleDone: { textDecorationLine: 'line-through', color: t.muted },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
   chipText: { fontSize: 12, fontWeight: '700' },
 
   // Parent feedback
-  feedbackLine: { marginTop: 8, fontSize: 13, color: '#12756D', fontStyle: 'italic', lineHeight: 18 },
+  feedbackLine: { marginTop: 8, fontSize: 13, color: t.primaryDark, fontStyle: 'italic', lineHeight: 18 },
   feedbackBox: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: t.warnTint,
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
@@ -1164,23 +1177,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     gap: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingTop: 12,
     paddingHorizontal: 20,
     paddingBottom: 26,
-    shadowColor: '#0F7F76',
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 10,
   },
   navItem: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 18 },
-  navActive: { backgroundColor: '#E6F8F6' },
+  navActive: { backgroundColor: t.tint },
   navEmoji: { fontSize: 24 },
-  navText: { fontSize: 12, color: '#7C8B88', fontWeight: '700' },
-  navTextActive: { color: '#0F7F76' },
+  navText: { fontSize: 12, color: t.muted, fontWeight: '700' },
+  navTextActive: { color: t.primaryDark },
 
   // Automatic Discipline System deduction popup
   disciplineModalOverlay: {
@@ -1193,7 +1206,7 @@ const styles = StyleSheet.create({
   disciplineModalCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 22,
     padding: 22,
     alignItems: 'center',
@@ -1209,7 +1222,7 @@ const styles = StyleSheet.create({
   },
   disciplineCloseText: {
     fontSize: 18,
-    color: '#999',
+    color: t.muted,
     fontWeight: '700',
   },
   disciplineModalEmoji: {
@@ -1219,7 +1232,7 @@ const styles = StyleSheet.create({
   disciplineModalTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#2D2D2D',
+    color: t.text,
     marginBottom: 10,
   },
   disciplinePointsLost: {
@@ -1232,17 +1245,17 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     fontSize: 12,
     fontWeight: '800',
-    color: '#888',
+    color: t.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 5,
   },
   disciplineReasonText: {
     alignSelf: 'stretch',
-    backgroundColor: '#FFF5F5',
+    backgroundColor: t.dangerTint,
     borderRadius: 12,
     padding: 12,
-    color: '#444',
+    color: t.text,
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 12,
@@ -1255,13 +1268,13 @@ const styles = StyleSheet.create({
   },
   disciplineDoneButton: {
     alignSelf: 'stretch',
-    backgroundColor: '#4ECDC4',
+    backgroundColor: t.primary,
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: 'center',
   },
   disciplineDoneButtonText: {
-    color: '#FFFFFF',
+    color: t.onPrimary,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -1274,7 +1287,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   modalCard: {
-    backgroundColor: '#fff',
+    backgroundColor: t.card,
     borderRadius: 24,
     padding: 24,
     width: '100%',
@@ -1286,15 +1299,15 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
   },
   closeBtn: { alignSelf: 'flex-end', marginBottom: 4 },
-  closeText: { fontSize: 18, color: '#999' },
-  modalTitle: { fontSize: 22, fontWeight: '800', color: '#2D2D2D', marginBottom: 6 },
-  modalSubtitle: { fontSize: 14, color: '#888', marginBottom: 16, lineHeight: 20 },
+  closeText: { fontSize: 18, color: t.muted },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: t.text, marginBottom: 6 },
+  modalSubtitle: { fontSize: 14, color: t.muted, marginBottom: 16, lineHeight: 20 },
   photoPreview: {
     width: '100%',
     height: 160,
     borderRadius: 12,
     marginBottom: 16,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: t.divider,
   },
   aiFeedback: {
     borderRadius: 14,
@@ -1303,10 +1316,10 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 1.5,
   },
-  aiFeedbackSuccess: { backgroundColor: '#F0FFF4', borderColor: '#4ECDC4' },
-  aiFeedbackWarning: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
+  aiFeedbackSuccess: { backgroundColor: t.tint, borderColor: t.primary },
+  aiFeedbackWarning: { backgroundColor: t.warnTint, borderColor: '#F4B942' },
   aiFeedbackEmoji: { fontSize: 22 },
-  aiFeedbackText: { fontSize: 14, color: '#444', fontWeight: '500', lineHeight: 20 },
+  aiFeedbackText: { fontSize: 14, color: t.text, fontWeight: '500', lineHeight: 20 },
   optionalBadge: {
     backgroundColor: '#EFEAFF',
     borderRadius: 14,
@@ -1325,12 +1338,12 @@ const styles = StyleSheet.create({
   },
   coinBadgeText: { fontSize: 13, fontWeight: '800', color: '#B7791F' },
   descriptionBox: {
-    backgroundColor: '#F0FFFE',
+    backgroundColor: t.tint,
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1.5,
-    borderColor: '#4ECDC4',
+    borderColor: t.primary,
   },
   descriptionHeader: {
     flexDirection: 'row',
@@ -1338,48 +1351,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  descriptionLabel: { fontSize: 11, fontWeight: '800', color: '#888', letterSpacing: 1 },
-  descriptionText: { fontSize: 16, color: '#2D2D2D', lineHeight: 23, fontWeight: '500' },
+  descriptionLabel: { fontSize: 11, fontWeight: '800', color: t.muted, letterSpacing: 1 },
+  descriptionText: { fontSize: 16, color: t.text, lineHeight: 23, fontWeight: '500' },
   photoButtons: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   photoBtn: {
     flex: 1,
-    backgroundColor: '#F0FFFE',
+    backgroundColor: t.tint,
     borderRadius: 14,
     padding: 14,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#4ECDC4',
+    borderColor: t.primary,
     gap: 6,
   },
   photoBtnEmoji: { fontSize: 26 },
-  photoBtnText: { fontSize: 13, fontWeight: '600', color: '#4ECDC4' },
+  photoBtnText: { fontSize: 13, fontWeight: '600', color: t.primary },
   loadingContainer: { alignItems: 'center', gap: 12, paddingVertical: 16 },
-  loadingText: { fontSize: 14, color: '#888', fontWeight: '600', textAlign: 'center' },
+  loadingText: { fontSize: 14, color: t.muted, fontWeight: '600', textAlign: 'center' },
   submitBtn: {
-    backgroundColor: '#4ECDC4',
+    backgroundColor: t.primary,
     borderRadius: 12,
     padding: 15,
     alignItems: 'center',
-    shadowColor: '#4ECDC4',
+    shadowColor: t.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
   submitBtnDisabled: { backgroundColor: '#CCC', shadowOpacity: 0 },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  submitBtnText: { color: t.onPrimary, fontSize: 16, fontWeight: '700' },
   doneBtn: {
-    backgroundColor: '#4ECDC4',
+    backgroundColor: t.primary,
     borderRadius: 12,
     padding: 15,
     alignItems: 'center',
-    shadowColor: '#4ECDC4',
+    shadowColor: t.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
-  doneBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  doneBtnText: { color: t.onPrimary, fontSize: 16, fontWeight: '700' },
   retryBtn: {
     backgroundColor: '#E63946',
     borderRadius: 12,
@@ -1391,5 +1404,5 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-  retryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  retryBtnText: { color: t.onPrimary, fontSize: 16, fontWeight: '700' },
 });

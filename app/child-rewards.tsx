@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -20,6 +20,7 @@ import FloatingBackground from '../components/FloatingBackground';
 import PressableScale from '../components/PressableScale';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
+import { ChildTheme, useChildTheme } from '../utils/childTheme';
 
 // Slides up and fades in, staggered by index. Skips the motion when Reduce Motion is on.
 function AnimatedEntry({
@@ -58,6 +59,8 @@ function AnimatedEntry({
 
 export default function ChildRewardsScreen() {
   const router = useRouter();
+  const { theme, themeKey } = useChildTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const [childData, setChildData] = useState<any>(null);
   const [rewards, setRewards] = useState<any[]>([]);
   const [coinBalance, setCoinBalance] = useState(0);
@@ -284,7 +287,7 @@ export default function ChildRewardsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Same floating orbs as the dashboard (behind everything) */}
-      {!reduceMotion && <FloatingBackground />}
+      {!reduceMotion && <FloatingBackground themeKey={themeKey} />}
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -293,8 +296,8 @@ export default function ChildRewardsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#0F7F76"
-            colors={['#0F7F76']}
+            tintColor={theme.primaryDark}
+            colors={[theme.primaryDark]}
           />
         }>
 
@@ -360,7 +363,7 @@ export default function ChildRewardsScreen() {
         {/* Loading or Empty State */}
         {loading ? (
           <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color="#4ECDC4" />
+            <ActivityIndicator size="large" color={theme.primary} />
             <Text style={styles.emptyText}>Loading rewards...</Text>
           </View>
         ) : rewards.length === 0 ? (
@@ -546,7 +549,7 @@ export default function ChildRewardsScreen() {
                   {/* Action area */}
                   {buying ? (
                     <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="large" color="#4ECDC4" />
+                      <ActivityIndicator size="large" color={theme.primary} />
                       <Text style={styles.loadingText}>Buying your reward...</Text>
                     </View>
                   ) : justBought ? (
@@ -602,18 +605,18 @@ export default function ChildRewardsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#EAF9F6' },
+const makeStyles = (t: ChildTheme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.bg },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
 
   // Hero
   hero: {
-    backgroundColor: '#0F7F76',
+    backgroundColor: t.hero,
     borderRadius: 28,
     padding: 20,
     gap: 20,
     marginBottom: 14,
-    shadowColor: '#0F7F76',
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 14,
@@ -625,19 +628,19 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
   profileEmoji: { fontSize: 32 },
   heroNameBlock: { flexShrink: 1 },
-  heroGreeting: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
-  heroSub: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.88)', marginTop: 2 },
+  heroGreeting: { fontSize: 24, fontWeight: '900', color: t.onHero },
+  heroSub: { fontSize: 14, fontWeight: '600', color: t.onHero, marginTop: 2 },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 18,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -655,30 +658,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   heroCoinEmoji: { fontSize: 40 },
-  heroCoinAmount: { fontSize: 34, fontWeight: '900', color: '#FFD479', lineHeight: 38 },
-  heroCoinLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.88)' },
+  heroCoinAmount: { fontSize: 34, fontWeight: '900', color: t.onHero, lineHeight: 38 },
+  heroCoinLabel: { fontSize: 14, fontWeight: '600', color: t.onHero },
 
   // Stats
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   statTile: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 20,
     paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#DDF1EE',
-    shadowColor: '#0F7F76',
+    borderColor: t.border,
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 1,
   },
   statEmoji: { fontSize: 22 },
-  statValue: { fontSize: 24, fontWeight: '900', color: '#12756D', marginTop: 2 },
-  statLabel: { fontSize: 12, fontWeight: '600', color: '#6B7C79' },
+  statValue: { fontSize: 24, fontWeight: '900', color: t.primaryDark, marginTop: 2 },
+  statLabel: { fontSize: 12, fontWeight: '600', color: t.muted },
 
-  sectionTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B', marginBottom: 12 },
+  sectionTitle: { fontSize: 22, fontWeight: '900', color: t.text, marginBottom: 12 },
 
   // Empty / loading
   emptyState: {
@@ -686,47 +689,47 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     paddingHorizontal: 24,
     gap: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: '#DDF1EE',
+    borderColor: t.border,
   },
   emptyEmoji: { fontSize: 52 },
-  emptyText: { fontSize: 18, fontWeight: '800', color: '#1F2D2B' },
-  emptySubtext: { fontSize: 14, color: '#6B7C79', textAlign: 'center' },
+  emptyText: { fontSize: 18, fontWeight: '800', color: t.text },
+  emptySubtext: { fontSize: 14, color: t.muted, textAlign: 'center' },
 
   // Reward cards
   rewardsList: { gap: 12 },
   rewardCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: '#E3F1EE',
-    shadowColor: '#0F7F76',
+    borderColor: t.border,
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 2,
   },
-  rewardCardPurchased: { backgroundColor: '#F4FFFB' },
+  rewardCardPurchased: { backgroundColor: t.tint },
   stripe: { width: 8 },
   rewardBody: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   rewardEmojiBox: {
     width: 56,
     height: 56,
     borderRadius: 18,
-    backgroundColor: '#FFF8E1',
+    backgroundColor: t.warnTint,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: '#F4B942',
   },
-  rewardEmojiBoxPurchased: { backgroundColor: '#E0FFF4', borderColor: '#4ECDC4' },
+  rewardEmojiBoxPurchased: { backgroundColor: '#E0FFF4', borderColor: t.primary },
   rewardEmoji: { fontSize: 30 },
   rewardInfo: { flex: 1 },
-  rewardTitle: { fontSize: 18, fontWeight: '800', color: '#1F2D2B' },
+  rewardTitle: { fontSize: 18, fontWeight: '800', color: t.text },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
   chipText: { fontSize: 12, fontWeight: '700' },
@@ -735,7 +738,7 @@ const styles = StyleSheet.create({
   savingTrack: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#EEF2F1',
+    backgroundColor: t.divider,
     marginTop: 10,
     overflow: 'hidden',
   },
@@ -749,10 +752,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pillBought: { backgroundColor: '#4ECDC4' },
-  pillLocked: { backgroundColor: '#EEF2F1' },
-  pillText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF' },
-  pillTextBought: { fontSize: 20, color: '#FFFFFF' },
+  pillBought: { backgroundColor: t.primary },
+  pillLocked: { backgroundColor: t.divider },
+  pillText: { fontSize: 14, fontWeight: '900', color: t.onPrimary },
+  pillTextBought: { fontSize: 20, color: t.onPrimary },
   pillTextLocked: { fontSize: 18 },
 
   // Bottom nav
@@ -763,23 +766,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     gap: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingTop: 12,
     paddingHorizontal: 20,
     paddingBottom: 26,
-    shadowColor: '#0F7F76',
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 10,
   },
   navItem: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 18 },
-  navActive: { backgroundColor: '#E6F8F6' },
+  navActive: { backgroundColor: t.tint },
   navEmoji: { fontSize: 24 },
-  navText: { fontSize: 12, color: '#7C8B88', fontWeight: '700' },
-  navTextActive: { color: '#0F7F76' },
+  navText: { fontSize: 12, color: t.muted, fontWeight: '700' },
+  navTextActive: { color: t.primaryDark },
 
   // Reward popup
   modalOverlay: {
@@ -790,7 +793,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 26,
     padding: 22,
     width: '100%',
@@ -802,13 +805,13 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   closeBtn: { alignSelf: 'flex-end', padding: 4, marginBottom: 2 },
-  closeText: { fontSize: 20, color: '#999' },
+  closeText: { fontSize: 20, color: t.muted },
   modalEmojiBox: {
     alignSelf: 'center',
     width: 88,
     height: 88,
     borderRadius: 28,
-    backgroundColor: '#FFF8E1',
+    backgroundColor: t.warnTint,
     borderWidth: 2,
     borderColor: '#F4B942',
     alignItems: 'center',
@@ -816,16 +819,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalEmoji: { fontSize: 48 },
-  modalTitle: { fontSize: 24, fontWeight: '900', color: '#1F2D2B', textAlign: 'center', marginBottom: 12 },
-  modalSubtitle: { fontSize: 15, color: '#6B7C79', textAlign: 'center', lineHeight: 22, marginBottom: 18 },
+  modalTitle: { fontSize: 24, fontWeight: '900', color: t.text, textAlign: 'center', marginBottom: 12 },
+  modalSubtitle: { fontSize: 15, color: t.muted, textAlign: 'center', lineHeight: 22, marginBottom: 18 },
   detailBadges: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 14 },
   descriptionBox: {
-    backgroundColor: '#F0FFFE',
+    backgroundColor: t.tint,
     borderRadius: 16,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1.5,
-    borderColor: '#4ECDC4',
+    borderColor: t.primary,
   },
   descriptionHeader: {
     flexDirection: 'row',
@@ -833,30 +836,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  descriptionLabel: { fontSize: 14, fontWeight: '800', color: '#12756D' },
-  descriptionText: { fontSize: 16, color: '#2D2D2D', lineHeight: 23, fontWeight: '500' },
+  descriptionLabel: { fontSize: 14, fontWeight: '800', color: t.primaryDark },
+  descriptionText: { fontSize: 16, color: t.text, lineHeight: 23, fontWeight: '500' },
   errorText: { fontSize: 14, color: '#E63946', fontWeight: '600', marginBottom: 12, textAlign: 'center' },
   loadingContainer: { alignItems: 'center', gap: 12, paddingVertical: 16 },
-  loadingText: { fontSize: 14, color: '#888', fontWeight: '600', textAlign: 'center' },
+  loadingText: { fontSize: 14, color: t.muted, fontWeight: '600', textAlign: 'center' },
   primaryBtn: {
-    backgroundColor: '#4ECDC4',
+    backgroundColor: t.primary,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
-    shadowColor: '#4ECDC4',
+    shadowColor: t.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
   },
-  primaryBtnDisabled: { backgroundColor: '#EEF2F1', shadowOpacity: 0, elevation: 0 },
-  primaryBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-  primaryBtnTextDisabled: { color: '#8A9996' },
-  confirmText: { fontSize: 16, fontWeight: '700', color: '#1F2D2B', textAlign: 'center', marginBottom: 12 },
+  primaryBtnDisabled: { backgroundColor: t.divider, shadowOpacity: 0, elevation: 0 },
+  primaryBtnText: { color: t.onPrimary, fontSize: 17, fontWeight: '800' },
+  primaryBtnTextDisabled: { color: t.muted },
+  confirmText: { fontSize: 16, fontWeight: '700', color: t.text, textAlign: 'center', marginBottom: 12 },
   confirmRow: { flexDirection: 'row', gap: 12 },
   confirmBtn: { flex: 1, borderRadius: 16, paddingVertical: 15, alignItems: 'center' },
-  confirmBtnCancel: { backgroundColor: '#EEF2F1' },
-  confirmBtnCancelText: { fontSize: 16, fontWeight: '800', color: '#6B7C79' },
+  confirmBtnCancel: { backgroundColor: t.divider },
+  confirmBtnCancelText: { fontSize: 16, fontWeight: '800', color: t.muted },
   confirmBtnYes: { backgroundColor: '#F4B942' },
-  confirmBtnYesText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
+  confirmBtnYesText: { fontSize: 16, fontWeight: '800', color: t.onPrimary },
 });
