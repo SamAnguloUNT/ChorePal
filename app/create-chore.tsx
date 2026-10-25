@@ -12,7 +12,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Text, TextInput, TouchableOpacity,
+  Text, TextInput,
   View
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
@@ -276,12 +276,20 @@ export default function CreateChoreScreen() {
           showsVerticalScrollIndicator={false}>
 
           {/* Back */}
-          <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+          <Pressable style={styles.back} onPress={() => router.back()}>
             <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
+          </Pressable>
 
-          {/* Title */}
-          <Text style={styles.pageTitle}>{isEdit ? 'Edit Chore ✏️' : 'Create Chore 📋'}</Text>
+          {/* Matching ChorePal header */}
+          <View style={styles.hero}>
+            <View style={styles.heroIcon}><Text style={styles.heroEmoji}>{isEdit ? '✏️' : '📋'}</Text></View>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroTitle}>{isEdit ? 'Edit Chore' : 'Create Chore'}</Text>
+              <Text style={styles.heroSubtitle}>{isEdit ? 'Update the details of this chore.' : 'Make a new task and reward your child.'}</Text>
+            </View>
+          </View>
+          <Text style={styles.sectionTitle}>Chore Details</Text>
+          <View style={styles.formCard}>
 
           {/* Chore Title */}
           <Text style={styles.label}>Title</Text>
@@ -297,9 +305,9 @@ export default function CreateChoreScreen() {
           {/* Coins */}
           <Text style={styles.label}>Total Coins 🪙</Text>
           <View style={styles.coinsContainer}>
-            <TouchableOpacity style={styles.coinBtn} onPress={() => changeCoins(-1)}>
+            <Pressable style={styles.coinBtn} onPress={() => changeCoins(-1)}>
               <Text style={styles.coinBtnText}>−</Text>
-            </TouchableOpacity>
+            </Pressable>
             <TextInput
               style={styles.coinsInput}
               placeholder="0"
@@ -310,9 +318,9 @@ export default function CreateChoreScreen() {
               maxLength={String(MAX_COINS).length}
               textAlign="center"
             />
-            <TouchableOpacity style={styles.coinBtn} onPress={() => changeCoins(1)}>
+            <Pressable style={styles.coinBtn} onPress={() => changeCoins(1)}>
               <Text style={styles.coinBtnText}>+</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
           <Text style={styles.hintText}>Maximum {MAX_COINS} coins per chore</Text>
 
@@ -332,23 +340,26 @@ export default function CreateChoreScreen() {
             />
           </View>
 
+          </View>
+          <Text style={styles.sectionTitle}>Assignment</Text>
+          <View style={styles.formCard}>
           {/* Assign To */}
           <Text style={styles.label}>Assign To</Text>
           <View style={styles.toggleRow}>
-            <TouchableOpacity
+            <Pressable
               style={[styles.toggleBtn, assignTo === 'all' && styles.toggleActive]}
               onPress={() => setAssignTo('all')}>
               <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>
                 All Children
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Pressable>
+            <Pressable
               style={[styles.toggleBtn, assignTo === 'specific' && styles.toggleActive]}
               onPress={() => setAssignTo('specific')}>
               <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>
                 Specific Child
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           {/* Child Selector — now loads real children */}
@@ -358,7 +369,7 @@ export default function CreateChoreScreen() {
                 <Text style={styles.noChildrenText}>No children added yet!</Text>
               ) : (
                 children.map(child => (
-                  <TouchableOpacity
+                  <Pressable
                     key={child.id}
                     style={[styles.childChip, selectedChildren.includes(child.id) && styles.childChipSelected]}
                     onPress={() => toggleChild(child.id)}>
@@ -366,29 +377,32 @@ export default function CreateChoreScreen() {
                     <Text style={[styles.childChipText, selectedChildren.includes(child.id) && styles.childChipTextSelected]}>
                       {child.name}
                     </Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 ))
               )}
             </View>
           )}
 
+          </View>
+          <Text style={styles.sectionTitle}>Schedule & Priority</Text>
+          <View style={styles.formCard}>
           {/* Chore Type */}
           <Text style={styles.label}>Chore Type</Text>
           <View style={styles.toggleRow}>
-            <TouchableOpacity
+            <Pressable
               style={[styles.toggleBtn, choreType === 'required' && styles.toggleActive]}
               onPress={() => setChoreType('required')}>
               <Text style={[styles.toggleText, choreType === 'required' && styles.toggleTextActive]}>
                 Required
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Pressable>
+            <Pressable
               style={[styles.toggleBtn, choreType === 'optional' && styles.toggleActive]}
               onPress={() => setChoreType('optional')}>
               <Text style={[styles.toggleText, choreType === 'optional' && styles.toggleTextActive]}>
                 Optional
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
           {choreType === 'optional' && (
             <Text style={styles.hintText}>Optional chores do not have a set schedule</Text>
@@ -396,43 +410,44 @@ export default function CreateChoreScreen() {
 
           {/* Set Deadline */}
           <Text style={styles.label}>Deadline</Text>
-          <TouchableOpacity style={styles.deadlineBtn} onPress={openCalendar}>
+          <Pressable style={styles.deadlineBtn} onPress={openCalendar}>
             <Text style={styles.deadlineBtnText}>📅 {formatDate(selectedDate)}</Text>
             <Text style={styles.deadlineArrow}>›</Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Repeatable */}
           <Text style={styles.label}>Task can be done repeatedly</Text>
           <View style={styles.toggleRow}>
-            <TouchableOpacity
+            <Pressable
               style={[styles.toggleBtn, !repeatable && styles.toggleActive]}
               onPress={() => setRepeatable(false)}>
               <Text style={[styles.toggleText, !repeatable && styles.toggleTextActive]}>No</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Pressable>
+            <Pressable
               style={[styles.toggleBtn, repeatable && styles.toggleActive]}
               onPress={() => setRepeatable(true)}>
               <Text style={[styles.toggleText, repeatable && styles.toggleTextActive]}>Yes</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           {/* Priority */}
           <Text style={styles.label}>Set Priority</Text>
           <View style={styles.priorityRow}>
             {(['low', 'medium', 'high'] as const).map((p) => (
-              <TouchableOpacity
+              <Pressable
                 key={p}
                 style={[styles.priorityBtn, priority === p && styles[`priority${p.charAt(0).toUpperCase() + p.slice(1)}Active` as keyof typeof styles]]}
                 onPress={() => setPriority(p)}>
                 <Text style={[styles.priorityText, priority === p && styles.priorityTextActive]}>
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </View>
 
+          </View>
           {/* Save Button */}
-          <TouchableOpacity
+          <Pressable
             style={[styles.createBtn, loading && styles.createBtnDisabled]}
             onPress={handleSave}
             disabled={loading}>
@@ -441,13 +456,13 @@ export default function CreateChoreScreen() {
                 ? (isEdit ? 'Saving...' : 'Creating...')
                 : (isEdit ? 'Save Changes ✅' : 'Create Chore 🎉')}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
 
           {/* Delete Button (only when editing an existing chore) */}
           {isEdit && (
-            <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={loading}>
+            <Pressable style={styles.deleteBtn} onPress={handleDelete} disabled={loading}>
               <Text style={styles.deleteBtnText}>Delete Task</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
 
         </ScrollView>
@@ -470,16 +485,16 @@ export default function CreateChoreScreen() {
               markedDates={selectedDate ? {
                 [selectedDate]: {
                   selected: true,
-                  selectedColor: '#4ECDC4',
+                  selectedColor: '#11847D',
                 },
               } : {}}
               minDate={today}
               theme={{
-                selectedDayBackgroundColor: '#4ECDC4',
+                selectedDayBackgroundColor: '#11847D',
                 selectedDayTextColor: '#fff',
-                todayTextColor: '#4ECDC4',
-                arrowColor: '#4ECDC4',
-                dotColor: '#4ECDC4',
+                todayTextColor: '#11847D',
+                arrowColor: '#11847D',
+                dotColor: '#11847D',
                 textDayFontWeight: '600',
                 textMonthFontWeight: '800',
               }}
@@ -488,12 +503,12 @@ export default function CreateChoreScreen() {
               <Text style={styles.calendarSelected}>
                 {selectedDate ? formatDate(selectedDate) : 'Pick a day'}
               </Text>
-              <TouchableOpacity
+              <Pressable
                 style={[styles.confirmBtn, !selectedDate && { opacity: 0.4 }]}
                 disabled={!selectedDate}
                 onPress={() => setCalendarVisible(false)}>
                 <Text style={styles.confirmBtnText}>Confirm</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -504,180 +519,59 @@ export default function CreateChoreScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: '#F1FAF8' },
   inner: { flex: 1 },
-  content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
-  back: { marginBottom: 16 },
-  backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
-  pageTitle: { fontSize: 28, fontWeight: '800', color: '#2D2D2D', marginBottom: 24 },
-  label: { fontSize: 14, fontWeight: '700', color: '#444', marginBottom: 8 },
-  hintText: { fontSize: 12, color: '#aaa', marginTop: -4, marginBottom: 12, fontStyle: 'italic' },
-  input: {
-    borderWidth: 1.5,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 13,
-    fontSize: 15,
-    color: '#333',
-    backgroundColor: '#F9F9F9',
-    marginBottom: 20,
-  },
-  textArea: {
-    borderWidth: 1.5,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 13,
-    fontSize: 15,
-    color: '#333',
-    backgroundColor: '#F9F9F9',
-    marginBottom: 20,
-    minHeight: 90,
-  },
-  coinsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
-  },
-  coinBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#4ECDC4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coinBtnText: { fontSize: 22, color: '#fff', fontWeight: '700' },
-  coinsInput: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 13,
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2D2D2D',
-    backgroundColor: '#F9F9F9',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 16,
-    gap: 4,
-  },
-  toggleBtn: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
-  toggleActive: { backgroundColor: '#4ECDC4' },
-  toggleText: { fontSize: 14, fontWeight: '600', color: '#888' },
-  toggleTextActive: { color: '#fff' },
-  childSelector: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-    marginTop: -8,
-    flexWrap: 'wrap',
-  },
-  noChildrenText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
-  childChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F0F0F0',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  childChipSelected: { backgroundColor: '#F0FFFE', borderColor: '#4ECDC4' },
-  childChipEmoji: { fontSize: 18 },
-  childChipText: { fontSize: 14, fontWeight: '600', color: '#888' },
-  childChipTextSelected: { color: '#4ECDC4' },
-  deadlineBtn: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#DDD',
-    borderRadius: 12,
-    padding: 14,
-    backgroundColor: '#F9F9F9',
-    marginBottom: 20,
-  },
-  deadlineBtnText: { fontSize: 15, color: '#333', fontWeight: '600' },
-  deadlineArrow: { fontSize: 22, color: '#CCC' },
-  priorityRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-  priorityBtn: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: '#F0F0F0',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 120 },
+  back: { paddingVertical: 12, alignSelf: 'flex-start', marginBottom: 8 },
+  backText: { fontSize: 15, color: '#127E78', fontWeight: '700' },
+  hero: { backgroundColor: '#11847D', borderRadius: 24, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 26, marginTop: 8, shadowColor: '#0C665F', shadowOffset: {width: 0,height: 6}, shadowOpacity: 0.12, shadowRadius: 12, elevation: 3 },
+  heroIcon: { width: 58, height: 58, borderRadius: 18, backgroundColor: '#E4F8F4', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  heroEmoji: { fontSize: 29 },
+  heroCopy: { flex: 1 },
+  heroTitle: { fontSize: 26, fontWeight: '800', color: '#FFFFFF' },
+  heroSubtitle: { fontSize: 12, lineHeight: 18, color: '#E4F8F4', marginTop: 5 },
+  sectionTitle: { fontSize: 21, fontWeight: '800', color: '#203532', marginBottom: 12 },
+  formCard: { padding: 20, backgroundColor: '#FFFFFF', borderRadius: 22, borderWidth: 1, borderColor: '#E3F0ED', marginBottom: 25 },
+  label: { fontSize: 14, fontWeight: '700', color: '#263A36', marginTop: 10, marginBottom: 9 },
+  hintText: { fontSize: 12, color: '#718683', marginTop: -4, marginBottom: 12 },
+  input: { borderWidth: 1, borderColor: '#DCEBE8', borderRadius: 13, padding: 14, fontSize: 16, color: '#263A36', backgroundColor: '#F7FBFA', marginBottom: 16 },
+  textArea: { borderWidth: 1, borderColor: '#DCEBE8', borderRadius: 13, padding: 14, fontSize: 16, color: '#263A36', backgroundColor: '#F7FBFA', marginBottom: 16, minHeight: 105, textAlignVertical: 'top' },
+  coinsContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  coinBtn: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#11847D', alignItems: 'center', justifyContent: 'center' },
+  coinBtnText: { fontSize: 23, color: '#FFFFFF', fontWeight: '700' },
+  coinsInput: { flex: 1, borderWidth: 1, borderColor: '#DCEBE8', borderRadius: 13, padding: 12, fontSize: 20, fontWeight: '800', color: '#263A36', backgroundColor: '#F7FBFA' },
+  toggleRow: { flexDirection: 'row', backgroundColor: '#EFF7F5', borderRadius: 14, padding: 4, marginBottom: 16, gap: 4 },
+  toggleBtn: { flex: 1, paddingVertical: 13, paddingHorizontal: 6, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  toggleActive: { backgroundColor: '#11847D' },
+  toggleText: { fontSize: 13, fontWeight: '700', color: '#718683', textAlign: 'center' },
+  toggleTextActive: { color: '#FFFFFF' },
+  childSelector: { flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
+  noChildrenText: { fontSize: 14, color: '#718683' },
+  childChip: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, paddingVertical: 11, borderRadius: 16, backgroundColor: '#F7FBFA', borderWidth: 1.5, borderColor: '#E3F0ED' },
+  childChipSelected: { backgroundColor: '#E6F8F5', borderColor: '#11A79B' },
+  childChipEmoji: { fontSize: 20 },
+  childChipText: { fontSize: 14, fontWeight: '700', color: '#718683' },
+  childChipTextSelected: { color: '#126F67' },
+  deadlineBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#DCEBE8', borderRadius: 13, padding: 15, backgroundColor: '#F7FBFA', marginBottom: 16 },
+  deadlineBtnText: { fontSize: 15, color: '#263A36', fontWeight: '700' },
+  deadlineArrow: { fontSize: 22, color: '#11847D' },
+  priorityRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  priorityBtn: { flex: 1, paddingVertical: 13, borderRadius: 13, alignItems: 'center', backgroundColor: '#EFF7F5', borderWidth: 1.5, borderColor: 'transparent' },
   priorityLowActive: { backgroundColor: '#E8F5E9', borderColor: '#66BB6A' },
   priorityMediumActive: { backgroundColor: '#FFF8E1', borderColor: '#F4B942' },
   priorityHighActive: { backgroundColor: '#FFEBEE', borderColor: '#E63946' },
-  priorityText: { fontSize: 14, fontWeight: '600', color: '#888' },
-  priorityTextActive: { color: '#2D2D2D', fontWeight: '700' },
-  createBtn: {
-    backgroundColor: '#4ECDC4',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#4ECDC4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  createBtnDisabled: { backgroundColor: '#A8E6E2', shadowOpacity: 0 },
-  createBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  deleteBtn: {
-    borderWidth: 1.5,
-    borderColor: '#E63946',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  deleteBtnText: { color: '#E63946', fontSize: 17, fontWeight: '700' },
-  calendarOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  calendarCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 20,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  calendarTitle: { fontSize: 20, fontWeight: '800', color: '#2D2D2D', marginBottom: 12, textAlign: 'center' },
-  calendarFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-  },
-  calendarSelected: { fontSize: 15, fontWeight: '600', color: '#4ECDC4' },
-  confirmBtn: {
-    backgroundColor: '#4ECDC4',
-    borderRadius: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  confirmBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  priorityText: { fontSize: 13, fontWeight: '700', color: '#718683' },
+  priorityTextActive: { color: '#263A36', fontWeight: '800' },
+  createBtn: { backgroundColor: '#11847D', borderRadius: 15, padding: 17, alignItems: 'center', marginBottom: 12 },
+  createBtnDisabled: { opacity: 0.45 },
+  createBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  deleteBtn: { borderWidth: 1.5, borderColor: '#E65A62', backgroundColor: '#FFF5F5', borderRadius: 15, padding: 16, alignItems: 'center' },
+  deleteBtnText: { color: '#D73E4B', fontSize: 16, fontWeight: '800' },
+  calendarOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  calendarCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, width: '100%', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  calendarTitle: { fontSize: 20, fontWeight: '800', color: '#263A36', marginBottom: 12, textAlign: 'center' },
+  calendarFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E3F0ED' },
+  calendarSelected: { fontSize: 14, fontWeight: '700', color: '#126F67', flex: 1 },
+  confirmBtn: { backgroundColor: '#11847D', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
+  confirmBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
 });
