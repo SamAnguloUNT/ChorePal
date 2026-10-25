@@ -18,6 +18,7 @@ import { Calendar } from 'react-native-calendars';
 import FloatingBackground from '../components/FloatingBackground';
 import PressableScale from '../components/PressableScale';
 import { db } from '../config/firebase';
+import { ChildTheme, useChildTheme } from '../utils/childTheme';
 
 // Deadlines are saved by the parent app as "YYYY-MM-DD" strings (local dates).
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -110,7 +111,7 @@ function FloatingEmoji({ emoji, skip }: { emoji: string; skip: boolean }) {
   return (
     <Animated.Text
       style={[
-        styles.emptyEmoji,
+        { fontSize: 44 },
         { transform: [{ translateY: float.interpolate({ inputRange: [0, 1], outputRange: [0, -8] }) }] },
       ]}>
       {emoji}
@@ -120,6 +121,8 @@ function FloatingEmoji({ emoji, skip }: { emoji: string; skip: boolean }) {
 
 export default function ChildCalendarScreen() {
   const router = useRouter();
+  const { theme, themeKey } = useChildTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
   const today = toLocalDateString(new Date());
 
   const [childName, setChildName] = useState('');
@@ -206,7 +209,7 @@ export default function ChildCalendarScreen() {
   const dotColor = (c: any, date: string) => {
     if (c.status === 'approved') return COLORS.approved;
     if (c.status === 'pending') return COLORS.pending;
-    return date < today ? COLORS.overdue : COLORS.todo;
+    return date < today ? COLORS.overdue : theme.primary;
   };
 
   const markedDates = useMemo(() => {
@@ -216,9 +219,9 @@ export default function ChildCalendarScreen() {
         dots: list.slice(0, 3).map((c, i) => ({ key: `${c.id}-${i}`, color: dotColor(c, date) })),
       };
     });
-    marked[selectedDate] = { ...(marked[selectedDate] || {}), selected: true, selectedColor: '#0F7F76' };
+    marked[selectedDate] = { ...(marked[selectedDate] || {}), selected: true, selectedColor: theme.hero };
     return marked;
-  }, [byDate, selectedDate]);
+  }, [byDate, selectedDate, theme]);
 
   // Required chores first, then optional ones
   const dayChores = [...(byDate[selectedDate] || [])].sort(
@@ -230,13 +233,13 @@ export default function ChildCalendarScreen() {
     if (c.status === 'approved') return { label: 'Done ✓', bg: '#E0FFF4', color: '#2A9D8F', stripe: COLORS.approved };
     if (c.status === 'pending') return { label: 'Waiting for approval', bg: '#FFF3CD', color: '#B7791F', stripe: COLORS.pending };
     if (selectedDate < today) return { label: 'Overdue', bg: '#FFE5E5', color: '#E63946', stripe: COLORS.overdue };
-    return { label: 'To do', bg: '#E6F8F6', color: '#0F7F76', stripe: COLORS.todo };
+    return { label: 'To do', bg: theme.tint, color: theme.primaryDark, stripe: theme.primary };
   };
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Same floating orbs as the dashboard (behind everything) */}
-      {!reduceMotion && <FloatingBackground />}
+      {!reduceMotion && <FloatingBackground themeKey={themeKey} />}
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -245,8 +248,8 @@ export default function ChildCalendarScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#0F7F76"
-            colors={['#0F7F76']}
+            tintColor={theme.primaryDark}
+            colors={[theme.primaryDark]}
           />
         }>
 
@@ -259,7 +262,7 @@ export default function ChildCalendarScreen() {
 
         {loading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color="#4ECDC4" />
+            <ActivityIndicator size="large" color={theme.primary} />
             <Text style={styles.loadingText}>Loading your calendar...</Text>
           </View>
         ) : (
@@ -267,23 +270,29 @@ export default function ChildCalendarScreen() {
             <AnimatedEntry index={1} skip={reduceMotion}>
               <View style={styles.calendarCard}>
                 <Calendar
+                  key={themeKey}
                   current={selectedDate}
                   markingType="multi-dot"
                   markedDates={markedDates}
                   onDayPress={(day: any) => setSelectedDate(day.dateString)}
                   enableSwipeMonths
                   theme={{
-                    selectedDayBackgroundColor: '#0F7F76',
-                    selectedDayTextColor: '#fff',
-                    todayTextColor: '#0F7F76',
-                    arrowColor: '#0F7F76',
+                    calendarBackground: theme.card,
+                    dayTextColor: theme.text,
+                    textDisabledColor: theme.border,
+                    monthTextColor: theme.text,
+                    textSectionTitleColor: theme.muted,
+                    selectedDayBackgroundColor: theme.hero,
+                    selectedDayTextColor: theme.onHero,
+                    todayTextColor: theme.primaryDark,
+                    arrowColor: theme.primaryDark,
                     textDayFontWeight: '600',
                     textMonthFontWeight: '800',
                     textDayHeaderFontWeight: '700',
                   }}
                 />
                 <View style={styles.legendRow}>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.todo }]} /><Text style={styles.legendText}>To do</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: theme.primary }]} /><Text style={styles.legendText}>To do</Text></View>
                   <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.pending }]} /><Text style={styles.legendText}>Waiting</Text></View>
                   <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.approved }]} /><Text style={styles.legendText}>Done</Text></View>
                   <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: COLORS.overdue }]} /><Text style={styles.legendText}>Overdue</Text></View>
@@ -390,23 +399,23 @@ export default function ChildCalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#EAF9F6' },
+const makeStyles = (t: ChildTheme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.bg },
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 130 },
   header: { marginBottom: 14 },
-  title: { fontSize: 26, fontWeight: '900', color: '#1F2D2B' },
-  subtitle: { fontSize: 14, fontWeight: '600', color: '#6B7C79', marginTop: 2 },
+  title: { fontSize: 26, fontWeight: '900', color: t.text },
+  subtitle: { fontSize: 14, fontWeight: '600', color: t.muted, marginTop: 2 },
   loadingBox: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  loadingText: { fontSize: 14, color: '#6B7C79', fontWeight: '600' },
+  loadingText: { fontSize: 14, color: t.muted, fontWeight: '600' },
   calendarCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 24,
     padding: 8,
     borderWidth: 1.5,
-    borderColor: '#E3F1EE',
+    borderColor: t.border,
     marginBottom: 18,
     overflow: 'hidden',
-    shadowColor: '#0F7F76',
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -417,45 +426,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: '#EEF5F4',
+    borderTopColor: t.divider,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: 12, fontWeight: '600', color: '#6B7C79' },
+  legendText: { fontSize: 12, fontWeight: '600', color: t.muted },
   dayHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   dayHeaderText: { flex: 1 },
-  dayTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B' },
-  daySub: { fontSize: 13, color: '#6B7C79', fontWeight: '600', marginTop: 2 },
-  summaryText: { fontSize: 13, color: '#12756D', fontWeight: '800', marginTop: 4 },
+  dayTitle: { fontSize: 22, fontWeight: '900', color: t.text },
+  daySub: { fontSize: 13, color: t.muted, fontWeight: '600', marginTop: 2 },
+  summaryText: { fontSize: 13, color: t.primaryDark, fontWeight: '800', marginTop: 4 },
   todayBtn: {
-    backgroundColor: '#E6F8F6',
+    backgroundColor: t.tint,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1.5,
     borderColor: '#BFE8E3',
   },
-  todayBtnText: { fontSize: 13, fontWeight: '800', color: '#0F7F76' },
+  todayBtnText: { fontSize: 13, fontWeight: '800', color: t.primaryDark },
   list: { gap: 12, marginTop: 12 },
   emptyBox: {
     alignItems: 'center',
     paddingVertical: 30,
     gap: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 22,
     borderWidth: 1.5,
-    borderColor: '#DDF1EE',
+    borderColor: t.border,
   },
   emptyEmoji: { fontSize: 44 },
-  emptyText: { fontSize: 16, fontWeight: '800', color: '#1F2D2B' },
+  emptyText: { fontSize: 16, fontWeight: '800', color: t.text },
   choreCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: '#E3F1EE',
-    shadowColor: '#0F7F76',
+    borderColor: t.border,
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.07,
     shadowRadius: 8,
@@ -463,12 +472,12 @@ const styles = StyleSheet.create({
   },
   stripe: { width: 8 },
   choreBody: { flex: 1, padding: 14 },
-  choreTitle: { fontSize: 17, fontWeight: '800', color: '#1F2D2B' },
-  choreTitleDone: { textDecorationLine: 'line-through', color: '#8A9996' },
+  choreTitle: { fontSize: 17, fontWeight: '800', color: t.text },
+  choreTitleDone: { textDecorationLine: 'line-through', color: t.muted },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
   chipText: { fontSize: 12, fontWeight: '700' },
-  hint: { fontSize: 13, color: '#6B7C79', textAlign: 'center', marginTop: 16, fontStyle: 'italic' },
+  hint: { fontSize: 13, color: t.muted, textAlign: 'center', marginTop: 16, fontStyle: 'italic' },
   bottomNav: {
     flexDirection: 'row',
     position: 'absolute',
@@ -476,21 +485,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     gap: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: t.card,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingTop: 12,
     paddingHorizontal: 20,
     paddingBottom: 26,
-    shadowColor: '#0F7F76',
+    shadowColor: t.primaryDark,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 10,
   },
   navItem: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 8, borderRadius: 18 },
-  navActive: { backgroundColor: '#E6F8F6' },
+  navActive: { backgroundColor: t.tint },
   navEmoji: { fontSize: 24 },
-  navText: { fontSize: 12, color: '#7C8B88', fontWeight: '700' },
-  navTextActive: { color: '#0F7F76' },
+  navText: { fontSize: 12, color: t.muted, fontWeight: '700' },
+  navTextActive: { color: t.primaryDark },
 });
