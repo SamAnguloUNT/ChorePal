@@ -18,39 +18,27 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import Celebration from '../components/Celebration';
-import FloatingBackground from '../components/FloatingBackground';
-import PalMascot, { PalMood } from '../components/PalMascot';
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
 
-// Emoji choices grouped so parents can find one quickly.
+// Icon choices grouped so parents can find one quickly.
 const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
-  { label: 'Fun & Screens', emojis: ['🎮', '📱', '📺', '🎬', '🎵', '🎧', '🎲', '🧩'] },
+  { label: 'Screens & Media', emojis: ['🎮', '📱', '📺', '🎬', '🎵', '🎧', '🎲', '🧩'] },
   { label: 'Treats', emojis: ['🍦', '🍕', '🍫', '🍩', '🍪', '🧁', '🍔', '🥤'] },
   { label: 'Outings', emojis: ['🎡', '🎠', '🎪', '🏖️', '🏊', '⚽', '🛹', '🚗'] },
-  { label: 'Stuff & Special', emojis: ['🧸', '🎨', '📚', '🎁', '💰', '🏆', '⭐', '🦄', '🌈', '✈️', '🌙', '👑'] },
+  { label: 'Other', emojis: ['🧸', '🎨', '📚', '🎁', '💰', '🏆', '⭐', '🦄', '🌈', '✈️', '🌙', '👑'] },
 ];
 const QUICK_EMOJIS = ['🎁', '🎮', '🍦', '🍕', '🎬', '🧸', '🏆', '💰'];
 
 // One-tap starting points. Parents can edit everything after picking one.
-// Each idea gets its own candy color so the row feels playful.
 const TEMPLATES = [
-  { emoji: '📱', title: '30 Min Extra Screen Time', coins: 20, description: 'Use it any day after homework is done.', bg: '#E3F2FF', border: '#7BB8F0', color: '#1C5F9E' },
-  { emoji: '🍦', title: 'Ice Cream Trip', coins: 40, description: 'A trip to get your favorite ice cream.', bg: '#FFE8F1', border: '#F59BBE', color: '#A23462' },
-  { emoji: '🍕', title: 'Pick Dinner Tonight', coins: 30, description: 'You choose what the family eats for dinner!', bg: '#FFF1DE', border: '#F7B866', color: '#9A5B0E' },
-  { emoji: '🌙', title: 'Stay Up 30 Min Late', coins: 35, description: 'Good for a Friday or Saturday night.', bg: '#EFEAFF', border: '#A994F2', color: '#5A43B8' },
-  { emoji: '🎬', title: 'Family Movie Night Pick', coins: 50, description: 'You choose the movie and the snacks.', bg: '#FFE9E4', border: '#F39B85', color: '#A6402A' },
-  { emoji: '🧸', title: 'New Toy', coins: 200, description: 'A toy of your choice (we will agree on a price limit).', bg: '#E6F8EE', border: '#78D3A0', color: '#1E7A4A' },
-  { emoji: '🎡', title: 'Day Trip of Your Choice', coins: 400, description: 'Park, zoo, museum or arcade — you pick!', bg: '#FFF8D9', border: '#F2D25C', color: '#8A6A00' },
-];
-
-// What Pal says as the parent fills in the form (0-3 steps done).
-const PAL_LINES = [
-  "Let's make a reward! Pick an idea or start fresh 🎈",
-  'Ooh, nice! Now give it a price 🪙',
-  'Almost there! Who gets to buy it? 🙌',
-  "Woohoo! The kids are gonna love this! 🎉",
+  { emoji: '📱', title: '30 Min Extra Screen Time', coins: 20, description: 'Can be used any day after homework is done.' },
+  { emoji: '🍦', title: 'Ice Cream Trip', coins: 40, description: 'A trip out for your favorite ice cream.' },
+  { emoji: '🍕', title: 'Pick Dinner Tonight', coins: 30, description: 'Choose what the family has for dinner.' },
+  { emoji: '🌙', title: 'Stay Up 30 Min Late', coins: 35, description: 'Valid on Friday or Saturday nights.' },
+  { emoji: '🎬', title: 'Family Movie Night Pick', coins: 50, description: 'Choose the movie and the snacks.' },
+  { emoji: '🧸', title: 'New Toy', coins: 200, description: 'A toy of your choice, within an agreed price limit.' },
+  { emoji: '🎡', title: 'Day Trip of Your Choice', coins: 400, description: 'Park, zoo, museum or arcade.' },
 ];
 
 const COIN_PRESETS = [10, 25, 50, 100, 250];
@@ -59,15 +47,25 @@ const MAX_TITLE = 40;
 // Highest number of coins a single reward can cost. Change this one number to adjust the limit.
 const MAX_COINS = 1000;
 
-// Friendly label so parents can see at a glance how "big" a reward is.
-function priceTier(coins: number) {
-  if (coins <= 0) return { label: 'Set a price', bg: 'rgba(255,255,255,0.18)', color: '#FFFFFF' };
-  if (coins <= 30) return { label: '🍬 Small treat', bg: '#E0FFF4', color: '#2A9D8F' };
-  if (coins <= 150) return { label: '⭐ Nice reward', bg: '#FFF3CD', color: '#B7791F' };
-  return { label: '🏆 Big goal', bg: '#F1ECFF', color: '#6A4FD8' };
-}
+// Palette (matches the Create Chore screen)
+const TEAL = '#11847D';
+const TEAL_DARK = '#126F67';
+const TEAL_SOFT = '#E6F8F5';
+const BG = '#F1FAF8';
+const SURFACE = '#FFFFFF';
+const BORDER = '#DCEBE8';
+const CARD_BORDER = '#E3F0ED';
+const INPUT_BG = '#F7FBFA';
+const TOGGLE_BG = '#EFF7F5';
+const HEADING = '#203532';
+const INK = '#263A36';
+const MUTED = '#718683';
+const SUBTLE = '#9AABA8';
+const COIN = '#A86E10';
+const COIN_SOFT = '#FFF8E1';
+const DANGER = '#D73E4B';
 
-// Slides up and fades in, staggered by index. Skips the motion when Reduce Motion is on.
+// Gentle fade-in, staggered by index. Skipped when Reduce Motion is on.
 function AnimatedEntry({ index, skip, children }: { index: number; skip: boolean; children: React.ReactNode }) {
   const [anim] = useState(() => new Animated.Value(skip ? 1 : 0));
   useEffect(() => {
@@ -77,9 +75,9 @@ function AnimatedEntry({ index, skip, children }: { index: number; skip: boolean
     }
     Animated.timing(anim, {
       toValue: 1,
-      duration: 420,
-      delay: Math.min(index, 8) * 70,
-      easing: Easing.out(Easing.back(1.1)),
+      duration: 260,
+      delay: Math.min(index, 8) * 40,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
   }, [anim, index, skip]);
@@ -87,7 +85,7 @@ function AnimatedEntry({ index, skip, children }: { index: number; skip: boolean
     <Animated.View
       style={{
         opacity: anim,
-        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
       }}>
       {children}
     </Animated.View>
@@ -104,7 +102,6 @@ export default function CreateRewardScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const descriptionY = useRef(0);
-  const [emojiPop] = useState(() => new Animated.Value(1));
 
   const [title, setTitle] = useState('');
   const [coins, setCoins] = useState('');
@@ -116,15 +113,13 @@ export default function CreateRewardScreen() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEdit);
   const [children, setChildren] = useState<any[]>([]);
-  const [avgChoreCoins, setAvgChoreCoins] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const [celebrate, setCelebrate] = useState(false);
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
   }, []);
 
-  // Load real children from Firestore, plus the parent's chores so we can show "≈ N chores"
+  // Load children from Firestore
   useEffect(() => {
     const loadFamily = async () => {
       const user = auth.currentUser;
@@ -133,16 +128,7 @@ export default function CreateRewardScreen() {
         const childrenSnap = await getDocs(query(collection(db, 'children'), where('parentId', '==', user.uid)));
         setChildren(childrenSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch (error: any) {
-        Alert.alert('Error!', error.message);
-      }
-      try {
-        const choresSnap = await getDocs(query(collection(db, 'chores'), where('parentId', '==', user.uid)));
-        const values = choresSnap.docs
-          .map(d => Number((d.data() as any).coins))
-          .filter(n => Number.isFinite(n) && n > 0);
-        if (values.length) setAvgChoreCoins(values.reduce((a, b) => a + b, 0) / values.length);
-      } catch {
-        // The chore estimate is only a hint, so the screen works fine without it
+        Alert.alert('Something went wrong', error.message);
       }
     };
     loadFamily();
@@ -155,7 +141,7 @@ export default function CreateRewardScreen() {
       try {
         const snap = await getDoc(doc(db, 'rewards', editId));
         if (!snap.exists()) {
-          Alert.alert('Error!', 'This reward could not be found.', [
+          Alert.alert('Reward not found', 'This reward may have been deleted.', [
             { text: 'OK', onPress: () => router.back() }
           ]);
           return;
@@ -172,7 +158,7 @@ export default function CreateRewardScreen() {
           setAssignTo('all');
         }
       } catch (error: any) {
-        Alert.alert('Error!', error.message);
+        Alert.alert('Something went wrong', error.message);
       } finally {
         setInitialLoading(false);
       }
@@ -180,19 +166,11 @@ export default function CreateRewardScreen() {
     loadReward();
   }, [editId]);
 
-  // Little bounce on the preview icon whenever the emoji changes
-  const pickEmoji = (emoji: string) => {
-    setSelectedEmoji(emoji);
-    if (reduceMotion) return;
-    emojiPop.setValue(0.6);
-    Animated.spring(emojiPop, { toValue: 1, speed: 18, bounciness: 14, useNativeDriver: true }).start();
-  };
-
   const applyTemplate = (t: (typeof TEMPLATES)[number]) => {
     setTitle(t.title);
     setCoins(String(Math.min(t.coins, MAX_COINS)));
     setDescription(t.description);
-    pickEmoji(t.emoji);
+    setSelectedEmoji(t.emoji);
   };
 
   const toggleChild = (id: string) => {
@@ -227,25 +205,24 @@ export default function CreateRewardScreen() {
     });
   };
 
-  const finish = (heading: string, message: string, party: boolean) => {
-    if (party && !reduceMotion) setCelebrate(true);
-    Alert.alert(heading, message, [{ text: 'OK', onPress: () => router.back() }]);
+  const finish = (heading: string, message: string) => {
+    Alert.alert(heading, message, [{ text: 'Done', onPress: () => router.back() }]);
   };
 
   const handleSave = async () => {
     const coinsNum = parseInt(coins, 10);
-    if (!title.trim()) { Alert.alert('Missing!', 'Please enter a reward title!'); return; }
-    if (!coinsNum || coinsNum < 1) { Alert.alert('Missing!', 'Please enter coin cost!'); return; }
-    if (coinsNum > MAX_COINS) { Alert.alert('Too many coins!', `A reward can cost at most ${MAX_COINS} coins.`); return; }
+    if (!title.trim()) { Alert.alert('Title required', 'Please enter a title for this reward.'); return; }
+    if (!coinsNum || coinsNum < 1) { Alert.alert('Cost required', 'Please enter a coin cost of at least 1.'); return; }
+    if (coinsNum > MAX_COINS) { Alert.alert('Cost too high', `A reward can cost at most ${MAX_COINS} coins.`); return; }
     if (assignTo === 'specific' && selectedChildren.length === 0) {
-      Alert.alert('Missing!', 'Please select at least one child!'); return;
+      Alert.alert('No children selected', 'Please select at least one child.'); return;
     }
 
     try {
       setLoading(true);
       const user = auth.currentUser;
       if (!user) {
-        Alert.alert('Error!', 'You must be logged in!');
+        Alert.alert('Signed out', 'Please sign in to save this reward.');
         return;
       }
 
@@ -263,7 +240,7 @@ export default function CreateRewardScreen() {
           availableTo: assignTo === 'all' ? 'all' : selectedChildren[0],
           updatedAt: new Date(),
         });
-        finish('Reward Updated! ✅', `"${title.trim()}" has been saved.`, false);
+        finish('Changes saved', `"${title.trim()}" has been updated.`);
         return;
       }
 
@@ -289,9 +266,9 @@ export default function CreateRewardScreen() {
         });
       }
 
-      finish('Reward Created! 🎉', `"${title.trim()}" has been added to the rewards catalog!`, true);
+      finish('Reward created', `"${title.trim()}" has been added to your rewards.`);
     } catch (error: any) {
-      Alert.alert('Error!', error.message);
+      Alert.alert('Something went wrong', error.message);
     } finally {
       setLoading(false);
     }
@@ -299,7 +276,7 @@ export default function CreateRewardScreen() {
 
   const handleDelete = () => {
     if (!editId) return;
-    Alert.alert('Delete Reward?', `Are you sure you want to delete "${title}"?`, [
+    Alert.alert('Delete reward?', `"${title}" will be permanently removed.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -310,7 +287,7 @@ export default function CreateRewardScreen() {
             await deleteDoc(doc(db, 'rewards', editId));
             router.back();
           } catch (error: any) {
-            Alert.alert('Error!', error.message);
+            Alert.alert('Something went wrong', error.message);
           } finally {
             setLoading(false);
           }
@@ -323,31 +300,20 @@ export default function CreateRewardScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0F7F76" />
+          <ActivityIndicator size="large" color={TEAL} />
         </View>
       </SafeAreaView>
     );
   }
 
   const coinsNum = parseInt(coins || '0', 10) || 0;
-  const tier = priceTier(coinsNum);
-  const choresNeeded = avgChoreCoins > 0 && coinsNum > 0 ? Math.max(1, Math.round(coinsNum / avgChoreCoins)) : 0;
   const assignedNames =
     assignTo === 'all'
-      ? 'All kids'
-      : children.filter(c => selectedChildren.includes(c.id)).map(c => c.name).join(', ') || 'Pick a kid';
-
-  // Pal ticks off his clipboard as the form fills in
-  const stepsDone =
-    (title.trim() ? 1 : 0) +
-    (coinsNum > 0 ? 1 : 0) +
-    (title.trim() && coinsNum > 0 && (assignTo === 'all' || selectedChildren.length > 0) ? 1 : 0);
-  const palMood: PalMood = stepsDone === 3 ? 'party' : 'working';
-  const palLine = isEdit ? 'Change anything you like, then tap save! ✏️' : PAL_LINES[stepsDone];
+      ? 'All children'
+      : children.filter(c => selectedChildren.includes(c.id)).map(c => c.name).join(', ') || 'No one selected';
 
   return (
     <SafeAreaView style={styles.container}>
-      {!reduceMotion && <FloatingBackground />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.inner}>
         <ScrollView
           ref={scrollRef}
@@ -356,70 +322,46 @@ export default function CreateRewardScreen() {
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           showsVerticalScrollIndicator={false}>
 
-          {/* Top bar */}
+          {/* Header */}
           <View style={styles.topBar}>
             <PressableScale style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
-              <Text style={styles.backText}>← Back</Text>
+              <Text style={styles.backText}>‹ Back</Text>
             </PressableScale>
-            <Text style={styles.pageTitle}>{isEdit ? 'Edit Reward ✏️' : 'New Reward 🎁'}</Text>
           </View>
+          <Text style={styles.pageTitle}>{isEdit ? 'Edit Reward' : 'New Reward'}</Text>
+          <Text style={styles.pageSubtitle}>
+            {isEdit ? 'Update the details below and save your changes.' : 'Set up a reward your children can redeem with coins.'}
+          </Text>
 
-          {/* Hero: Pal + live ticket preview */}
+          {/* Preview */}
           <AnimatedEntry index={0} skip={reduceMotion}>
-            <View style={styles.hero}>
-              <View style={styles.palRow}>
-                <PalMascot mood={palMood} checked={stepsDone} size={96} reduceMotion={reduceMotion} />
-                <View style={styles.bubble}>
-                  <View style={styles.bubbleTail} />
-                  <Text style={styles.bubbleText}>{palLine}</Text>
+            <Text style={styles.sectionCaption}>PREVIEW</Text>
+            <View style={styles.preview}>
+              <View style={styles.previewTop}>
+                <View style={styles.previewIcon}>
+                  <Text style={styles.previewEmoji}>{selectedEmoji}</Text>
+                </View>
+                <View style={styles.previewInfo}>
+                  <Text style={styles.previewTitle} numberOfLines={2}>{title.trim() || 'Reward title'}</Text>
+                  <Text style={styles.previewFor} numberOfLines={1}>Available to: {assignedNames}</Text>
                 </View>
               </View>
-
-              <Text style={styles.heroCaption}>👀 What your kids will see</Text>
-              <View style={styles.ticket}>
-                <View style={styles.ticketTop}>
-                  <Animated.View style={[styles.ticketEmojiCircle, { transform: [{ scale: emojiPop }] }]}>
-                    <Text style={styles.ticketEmoji}>{selectedEmoji}</Text>
-                    <Text style={styles.sparkle}>✨</Text>
-                  </Animated.View>
-                  <View style={styles.ticketInfo}>
-                    <Text style={styles.ticketTitle} numberOfLines={2}>{title.trim() || 'Your awesome reward'}</Text>
-                    <Text style={styles.ticketFor} numberOfLines={1}>For: {assignedNames}</Text>
-                  </View>
+              <View style={styles.divider} />
+              <View style={styles.previewBottom}>
+                <View style={styles.coinBadge}>
+                  <Text style={styles.coinBadgeText}>🪙 {coinsNum} coins</Text>
                 </View>
-                {/* Dashed tear line with notches, like a real ticket */}
-                <View style={styles.tearRow}>
-                  <View style={[styles.notch, styles.notchLeft]} />
-                  <View style={styles.tearLine} />
-                  <View style={[styles.notch, styles.notchRight]} />
+                <View style={styles.redeemBtn}>
+                  <Text style={styles.redeemBtnText}>Redeem</Text>
                 </View>
-                <View style={styles.ticketBottom}>
-                  <View style={styles.coinBadge}>
-                    <Text style={styles.coinBadgeText}>🪙 {coinsNum}</Text>
-                  </View>
-                  <View style={styles.buyBtn}>
-                    <Text style={styles.buyBtnText}>BUY IT! 🛒</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.heroPills}>
-                <View style={[styles.tierPill, { backgroundColor: tier.bg }]}>
-                  <Text style={[styles.tierText, { color: tier.color }]}>{tier.label}</Text>
-                </View>
-                {choresNeeded > 0 && (
-                  <View style={styles.choresPill}>
-                    <Text style={styles.choresText}>🧹 ≈ {choresNeeded} chore{choresNeeded === 1 ? '' : 's'} to earn</Text>
-                  </View>
-                )}
               </View>
             </View>
           </AnimatedEntry>
 
-          {/* Quick ideas (new rewards only) */}
+          {/* Suggestions (new rewards only) */}
           {!isEdit && (
             <AnimatedEntry index={1} skip={reduceMotion}>
-              <Text style={styles.sectionLabel}>💡 Quick ideas</Text>
+              <Text style={styles.sectionLabel}>Suggestions</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -430,20 +372,15 @@ export default function CreateRewardScreen() {
                   return (
                     <PressableScale
                       key={t.title}
-                      style={[
-                        styles.templateChip,
-                        { backgroundColor: t.bg, borderColor: active ? t.color : t.border },
-                        active && styles.templateChipActive,
-                      ]}
+                      style={[styles.templateChip, active && styles.templateChipActive]}
                       onPress={() => applyTemplate(t)}
+                      pressedScale={0.97}
                       accessibilityRole="button"
-                      accessibilityLabel={`Use idea: ${t.title}, ${t.coins} coins`}>
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Use suggestion: ${t.title}, ${t.coins} coins`}>
                       <Text style={styles.templateEmoji}>{t.emoji}</Text>
-                      <Text style={[styles.templateTitle, { color: t.color }]} numberOfLines={2}>{t.title}</Text>
-                      <View style={styles.templateCoins}>
-                        <Text style={styles.templateCoinsText}>🪙 {t.coins}</Text>
-                      </View>
-                      {active && <Text style={[styles.templateCheck, { backgroundColor: t.color }]}>✓</Text>}
+                      <Text style={styles.templateTitle} numberOfLines={2}>{t.title}</Text>
+                      <Text style={styles.templateCoins}>{t.coins} coins</Text>
                     </PressableScale>
                   );
                 })}
@@ -451,18 +388,19 @@ export default function CreateRewardScreen() {
             </AnimatedEntry>
           )}
 
-          {/* Step 1: picture */}
+          {/* Icon */}
           <AnimatedEntry index={2} skip={reduceMotion}>
-            <View style={[styles.card, { borderColor: '#F59BBE' }]}>
-              <StepHeader n={1} color="#E85A93" text="Pick a picture 🎨" />
+            <View style={styles.card}>
+              <SectionHeader title="Icon" />
               <View style={styles.emojiRow}>
                 {QUICK_EMOJIS.map(e => (
                   <PressableScale
                     key={e}
                     style={[styles.emojiQuick, selectedEmoji === e && styles.emojiQuickActive]}
-                    onPress={() => pickEmoji(e)}
-                    pressedScale={0.85}
+                    onPress={() => setSelectedEmoji(e)}
+                    pressedScale={0.94}
                     accessibilityRole="button"
+                    accessibilityState={{ selected: selectedEmoji === e }}
                     accessibilityLabel={`Icon ${e}`}>
                     <Text style={styles.emojiQuickText}>{e}</Text>
                   </PressableScale>
@@ -472,31 +410,31 @@ export default function CreateRewardScreen() {
                   onPress={() => setEmojiModalVisible(true)}
                   accessibilityRole="button"
                   accessibilityLabel="More icons">
-                  <Text style={styles.emojiMoreText}>More ➕</Text>
+                  <Text style={styles.emojiMoreText}>More</Text>
                 </PressableScale>
               </View>
             </View>
           </AnimatedEntry>
 
-          {/* Step 2: name */}
+          {/* Details */}
           <AnimatedEntry index={3} skip={reduceMotion}>
-            <View style={[styles.card, { borderColor: '#7BB8F0' }]}>
-              <StepHeader n={2} color="#3B8DDB" text="Name it ✏️" right={`${title.length}/${MAX_TITLE}`} />
+            <View style={styles.card}>
+              <SectionHeader title="Title" right={`${title.length}/${MAX_TITLE}`} />
               <TextInput
                 style={styles.input}
-                placeholder="Ice Cream Trip"
-                placeholderTextColor="#A9BFD6"
+                placeholder="e.g. Ice Cream Trip"
+                placeholderTextColor={SUBTLE}
                 value={title}
                 onChangeText={setTitle}
                 maxLength={MAX_TITLE}
                 autoCapitalize="words"
               />
               <View onLayout={(e) => { descriptionY.current = e.nativeEvent.layout.y; }}>
-                <Text style={styles.subLabel}>Any rules? (optional)</Text>
+                <Text style={styles.subLabel}>Description <Text style={styles.optional}>(optional)</Text></Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  placeholder="Weekends only, after homework"
-                  placeholderTextColor="#A9BFD6"
+                  placeholder="e.g. Weekends only, after homework is done"
+                  placeholderTextColor={SUBTLE}
                   value={description}
                   onChangeText={setDescription}
                   onFocus={scrollToDescription}
@@ -508,20 +446,19 @@ export default function CreateRewardScreen() {
             </View>
           </AnimatedEntry>
 
-          {/* Step 3: price */}
+          {/* Cost */}
           <AnimatedEntry index={4} skip={reduceMotion}>
-            <View style={[styles.card, { borderColor: '#F2C75C' }]}>
-              <StepHeader n={3} color="#D9A116" text="How many coins? 🪙" />
+            <View style={styles.card}>
+              <SectionHeader title="Coin cost" />
               <View style={styles.coinsRow}>
-                <PressableScale style={styles.coinBtn} onPress={() => changeCoins(-5)} pressedScale={0.85} accessibilityRole="button" accessibilityLabel="Minus 5 coins">
-                  <Text style={styles.coinBtnText}>−5</Text>
+                <PressableScale style={styles.stepBtn} onPress={() => changeCoins(-5)} pressedScale={0.94} accessibilityRole="button" accessibilityLabel="Decrease by 5 coins">
+                  <Text style={styles.stepBtnText}>−5</Text>
                 </PressableScale>
                 <View style={styles.coinsBox}>
-                  <Text style={styles.coinsBoxEmoji}>🪙</Text>
                   <TextInput
                     style={styles.coinsInput}
                     placeholder="0"
-                    placeholderTextColor="#E6CF95"
+                    placeholderTextColor={SUBTLE}
                     value={coins}
                     onChangeText={handleCoinsChange}
                     keyboardType="number-pad"
@@ -529,9 +466,10 @@ export default function CreateRewardScreen() {
                     textAlign="center"
                     accessibilityLabel="Coin cost"
                   />
+                  <Text style={styles.coinsUnit}>coins</Text>
                 </View>
-                <PressableScale style={styles.coinBtn} onPress={() => changeCoins(5)} pressedScale={0.85} accessibilityRole="button" accessibilityLabel="Plus 5 coins">
-                  <Text style={styles.coinBtnText}>+5</Text>
+                <PressableScale style={styles.stepBtn} onPress={() => changeCoins(5)} pressedScale={0.94} accessibilityRole="button" accessibilityLabel="Increase by 5 coins">
+                  <Text style={styles.stepBtnText}>+5</Text>
                 </PressableScale>
               </View>
               <View style={styles.presetRow}>
@@ -541,38 +479,43 @@ export default function CreateRewardScreen() {
                     style={[styles.presetChip, coinsNum === p && styles.presetChipActive]}
                     onPress={() => setCoins(String(p))}
                     accessibilityRole="button"
+                    accessibilityState={{ selected: coinsNum === p }}
                     accessibilityLabel={`${p} coins`}>
                     <Text style={[styles.presetText, coinsNum === p && styles.presetTextActive]}>{p}</Text>
                   </PressableScale>
                 ))}
               </View>
-              <Text style={styles.helper}>Up to {MAX_COINS} coins</Text>
+              <Text style={styles.helper}>Maximum {MAX_COINS} coins</Text>
             </View>
           </AnimatedEntry>
 
-          {/* Step 4: who */}
+          {/* Availability */}
           <AnimatedEntry index={5} skip={reduceMotion}>
-            <View style={[styles.card, { borderColor: '#A994F2' }]}>
-              <StepHeader n={4} color="#7B61FF" text="Who gets it? 🙌" />
+            <View style={styles.card}>
+              <SectionHeader title="Available to" />
               <View style={styles.toggleRow}>
                 <PressableScale
                   style={[styles.toggleBtn, assignTo === 'all' && styles.toggleActive]}
                   onPress={() => setAssignTo('all')}
-                  accessibilityRole="button">
-                  <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>👨‍👩‍👧 Everyone</Text>
+                  pressedScale={0.98}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: assignTo === 'all' }}>
+                  <Text style={[styles.toggleText, assignTo === 'all' && styles.toggleTextActive]}>All children</Text>
                 </PressableScale>
                 <PressableScale
                   style={[styles.toggleBtn, assignTo === 'specific' && styles.toggleActive]}
                   onPress={() => setAssignTo('specific')}
-                  accessibilityRole="button">
-                  <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>🙋 Pick kids</Text>
+                  pressedScale={0.98}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: assignTo === 'specific' }}>
+                  <Text style={[styles.toggleText, assignTo === 'specific' && styles.toggleTextActive]}>Specific children</Text>
                 </PressableScale>
               </View>
 
               {assignTo === 'specific' && (
                 <View style={styles.childSelector}>
                   {children.length === 0 ? (
-                    <Text style={styles.helper}>No children added yet!</Text>
+                    <Text style={styles.helper}>No children have been added yet.</Text>
                   ) : (
                     children.map(child => {
                       const on = selectedChildren.includes(child.id);
@@ -581,9 +524,10 @@ export default function CreateRewardScreen() {
                           key={child.id}
                           style={[styles.childChip, on && styles.childChipSelected]}
                           onPress={() => toggleChild(child.id)}
+                          pressedScale={0.97}
                           accessibilityRole="button"
                           accessibilityState={{ selected: on }}>
-                          <View style={[styles.childAvatar, on && styles.childAvatarOn]}>
+                          <View style={styles.childAvatar}>
                             <Text style={styles.childChipEmoji}>{child.avatar}</Text>
                           </View>
                           <Text style={[styles.childChipText, on && styles.childChipTextSelected]}>{child.name}</Text>
@@ -596,6 +540,7 @@ export default function CreateRewardScreen() {
               )}
             </View>
           </AnimatedEntry>
+
           {isEdit && (
             <PressableScale style={styles.deleteBtn} onPress={handleDelete} disabled={loading} accessibilityRole="button">
               <Text style={styles.deleteBtnText}>Delete Reward</Text>
@@ -609,17 +554,18 @@ export default function CreateRewardScreen() {
             style={[styles.saveBtn, loading && styles.saveBtnDisabled]}
             onPress={handleSave}
             disabled={loading}
+            pressedScale={0.98}
             accessibilityRole="button">
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveBtnText}>{isEdit ? 'Save Changes ✅' : 'Create Reward 🎉'}</Text>
+              <Text style={styles.saveBtnText}>{isEdit ? 'Save Changes' : 'Create Reward'}</Text>
             )}
           </PressableScale>
         </View>
       </KeyboardAvoidingView>
 
-      {/* Emoji Picker Modal */}
+      {/* Icon Picker Modal */}
       <Modal
         visible={emojiModalVisible}
         transparent
@@ -633,22 +579,24 @@ export default function CreateRewardScreen() {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Choose an icon</Text>
                   <PressableScale onPress={() => setEmojiModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close">
-                    <Text style={styles.closeText}>✕</Text>
+                    <Text style={styles.closeText}>Done</Text>
                   </PressableScale>
                 </View>
                 <ScrollView showsVerticalScrollIndicator={false}>
                   {EMOJI_GROUPS.map(group => (
                     <View key={group.label} style={styles.emojiGroup}>
-                      <Text style={styles.emojiGroupLabel}>{group.label}</Text>
+                      <Text style={styles.emojiGroupLabel}>{group.label.toUpperCase()}</Text>
                       <View style={styles.emojiGrid}>
                         {group.emojis.map(emoji => (
                           <PressableScale
                             key={emoji}
                             style={[styles.emojiOption, selectedEmoji === emoji && styles.emojiSelected]}
                             onPress={() => {
-                              pickEmoji(emoji);
+                              setSelectedEmoji(emoji);
                               setEmojiModalVisible(false);
-                            }}>
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Icon ${emoji}`}>
                             <Text style={styles.emojiOptionText}>{emoji}</Text>
                           </PressableScale>
                         ))}
@@ -661,289 +609,212 @@ export default function CreateRewardScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-      {celebrate && <Celebration source={require('../assets/images/confetti.json')} onDone={() => setCelebrate(false)} />}
     </SafeAreaView>
   );
 }
 
-// Numbered, colorful step header used at the top of each card.
-function StepHeader({ n, color, text, right }: { n: number; color: string; text: string; right?: string }) {
+// Simple section header used at the top of each card.
+function SectionHeader({ title, right }: { title: string; right?: string }) {
   return (
-    <View style={styles.stepHeader}>
-      <View style={[styles.stepBadge, { backgroundColor: color }]}>
-        <Text style={styles.stepBadgeText}>{n}</Text>
-      </View>
-      <Text style={styles.stepText}>{text}</Text>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
       {right ? <Text style={styles.counter}>{right}</Text> : null}
     </View>
   );
 }
 
-const TEAL = '#0F7F76';
-const TEAL_DARK = '#0A5F58';
-const MINT_BG = '#F3FBF9';
-const GOLD = '#F4B942';
-const GOLD_DARK = '#C98F1A';
-const INK = '#2D2D2D';
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: MINT_BG },
+  container: { flex: 1, backgroundColor: BG },
   inner: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 140 },
+  scroll: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 130 },
 
-  // Top bar
-  topBar: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  backBtn: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 2,
-    borderColor: '#D5EEE9',
-  },
-  backText: { fontSize: 14, color: TEAL, fontWeight: '800' },
-  pageTitle: { fontSize: 22, fontWeight: '900', color: INK },
+  // Header
+  topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  backBtn: { paddingVertical: 12, paddingRight: 12 },
+  backText: { fontSize: 15, color: '#127E78', fontWeight: '700' },
+  pageTitle: { fontSize: 26, fontWeight: '800', color: HEADING },
+  pageSubtitle: { fontSize: 14, color: MUTED, marginTop: 5, marginBottom: 24, lineHeight: 20 },
 
-  // Hero
-  hero: {
-    backgroundColor: TEAL,
-    borderRadius: 32,
-    padding: 18,
-    marginBottom: 22,
-    borderBottomWidth: 6,
-    borderBottomColor: TEAL_DARK,
+  // Preview
+  sectionCaption: { fontSize: 12, fontWeight: '700', color: MUTED, letterSpacing: 0.8, marginBottom: 9 },
+  preview: {
+    backgroundColor: SURFACE,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    shadowColor: '#0C665F',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
-  palRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
-  bubble: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  bubbleTail: {
-    position: 'absolute',
-    left: -7,
-    top: '50%',
-    marginTop: -7,
-    width: 14,
-    height: 14,
-    backgroundColor: '#FFFFFF',
-    transform: [{ rotate: '45deg' }],
-  },
-  bubbleText: { fontSize: 14, fontWeight: '800', color: INK, lineHeight: 20 },
-  heroCaption: { fontSize: 13, fontWeight: '800', color: '#D7F3EE', marginBottom: 8 },
-
-  // Ticket preview (mirrors the child's reward card)
-  ticket: { backgroundColor: '#FFFFFF', borderRadius: 24, overflow: 'hidden' },
-  ticketTop: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14 },
-  ticketEmojiCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#FFF8E1',
-    borderWidth: 3,
-    borderColor: GOLD,
+  previewTop: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 },
+  previewIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: '#E4F8F4',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ticketEmoji: { fontSize: 36 },
-  sparkle: { position: 'absolute', top: -6, right: -8, fontSize: 18 },
-  ticketInfo: { flex: 1 },
-  ticketTitle: { fontSize: 19, fontWeight: '900', color: INK, marginBottom: 4 },
-  ticketFor: { fontSize: 13, fontWeight: '700', color: '#7A9A94' },
-  tearRow: { flexDirection: 'row', alignItems: 'center', height: 16 },
-  notch: { width: 16, height: 16, borderRadius: 8, backgroundColor: TEAL },
-  notchLeft: { marginLeft: -8 },
-  notchRight: { marginRight: -8 },
-  tearLine: { flex: 1, borderTopWidth: 2, borderColor: '#E3EEEC', borderStyle: 'dashed', marginHorizontal: 6 },
-  ticketBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, paddingTop: 10 },
-  coinBadge: { backgroundColor: '#FFF3CD', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  coinBadgeText: { fontSize: 16, fontWeight: '900', color: '#9A6A10' },
-  buyBtn: {
-    backgroundColor: GOLD,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 4,
-    borderBottomColor: GOLD_DARK,
-  },
-  buyBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
-  heroPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  tierPill: { borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
-  tierText: { fontSize: 12, fontWeight: '800' },
-  choresPill: { borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.18)' },
-  choresText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
+  previewEmoji: { fontSize: 29 },
+  previewInfo: { flex: 1 },
+  previewTitle: { fontSize: 18, fontWeight: '800', color: INK, marginBottom: 4 },
+  previewFor: { fontSize: 13, color: MUTED },
+  divider: { height: 1, backgroundColor: CARD_BORDER, marginHorizontal: 18 },
+  previewBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, paddingTop: 14 },
+  coinBadge: { backgroundColor: COIN_SOFT, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  coinBadgeText: { fontSize: 14, fontWeight: '800', color: COIN },
+  redeemBtn: { backgroundColor: TEAL, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 10 },
+  redeemBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 
-  // Quick ideas
-  sectionLabel: { fontSize: 17, fontWeight: '900', color: INK, marginBottom: 10 },
-  templateScroll: { marginHorizontal: -18, marginBottom: 18 },
-  templateRow: { paddingHorizontal: 18, gap: 10, paddingBottom: 4 },
+  // Suggestions
+  sectionLabel: { fontSize: 21, fontWeight: '800', color: HEADING, marginTop: 26, marginBottom: 12 },
+  templateScroll: { marginHorizontal: -20, marginBottom: 24 },
+  templateRow: { paddingHorizontal: 20, gap: 10 },
   templateChip: {
-    width: 124,
-    borderRadius: 22,
-    padding: 12,
-    borderWidth: 2,
-    borderBottomWidth: 5,
+    width: 132,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: SURFACE,
+    borderWidth: 1.5,
+    borderColor: CARD_BORDER,
     gap: 6,
   },
-  templateChipActive: { transform: [{ rotate: '-2deg' }] },
-  templateEmoji: { fontSize: 34 },
-  templateTitle: { fontSize: 14, fontWeight: '800', minHeight: 38 },
-  templateCoins: { alignSelf: 'flex-start', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 },
-  templateCoinsText: { fontSize: 12, fontWeight: '900', color: '#9A6A10' },
-  templateCheck: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    overflow: 'hidden',
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
+  templateChipActive: { borderColor: '#11A79B', backgroundColor: TEAL_SOFT },
+  templateEmoji: { fontSize: 24 },
+  templateTitle: { fontSize: 14, fontWeight: '700', color: INK, minHeight: 36, lineHeight: 18 },
+  templateCoins: { fontSize: 12, fontWeight: '700', color: COIN },
 
   // Cards
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 26,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderBottomWidth: 5,
+    backgroundColor: SURFACE,
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
-  stepHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  stepBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  stepBadgeText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
-  stepText: { flex: 1, fontSize: 17, fontWeight: '900', color: INK },
-  counter: { fontSize: 12, fontWeight: '700', color: '#9AB0C6' },
-  subLabel: { fontSize: 13, fontWeight: '800', color: '#5E7389', marginBottom: 6 },
-  helper: { fontSize: 12, fontWeight: '600', color: '#8A9A97' },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: INK },
+  counter: { fontSize: 12, fontWeight: '600', color: SUBTLE },
+  subLabel: { fontSize: 14, fontWeight: '700', color: INK, marginBottom: 9 },
+  optional: { fontWeight: '500', color: SUBTLE },
+  helper: { fontSize: 12, color: MUTED },
   input: {
-    borderWidth: 2,
-    borderColor: '#D6E8F8',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 17,
-    fontWeight: '700',
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 13,
+    padding: 14,
+    fontSize: 16,
     color: INK,
-    backgroundColor: '#F4F9FE',
-    marginBottom: 14,
+    backgroundColor: INPUT_BG,
+    marginBottom: 16,
   },
-  textArea: { minHeight: 80, fontSize: 15, fontWeight: '600', marginBottom: 0 },
+  textArea: { minHeight: 105, marginBottom: 0 },
 
-  // Picture picker
+  // Icon picker
   emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   emojiQuick: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FFF0F6',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: TOGGLE_BG,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2.5,
+    borderWidth: 1.5,
     borderColor: 'transparent',
   },
-  emojiQuickActive: { borderColor: '#E85A93', backgroundColor: '#FFE3EF', transform: [{ scale: 1.08 }] },
-  emojiQuickText: { fontSize: 26 },
+  emojiQuickActive: { borderColor: '#11A79B', backgroundColor: TEAL_SOFT },
+  emojiQuickText: { fontSize: 24 },
   emojiMore: {
-    height: 50,
+    height: 48,
     paddingHorizontal: 16,
-    borderRadius: 25,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#E85A93',
-    borderStyle: 'dashed',
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    backgroundColor: INPUT_BG,
   },
-  emojiMoreText: { fontSize: 14, fontWeight: '900', color: '#E85A93' },
+  emojiMoreText: { fontSize: 14, fontWeight: '700', color: TEAL },
 
   // Coins
   coinsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  coinBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: GOLD,
+  stepBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: TEAL,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFE08A',
-    borderBottomWidth: 5,
-    borderBottomColor: GOLD_DARK,
   },
-  coinBtnText: { fontSize: 17, color: '#FFFFFF', fontWeight: '900' },
+  stepBtnText: { fontSize: 16, color: '#FFFFFF', fontWeight: '700' },
   coinsBox: {
     flex: 1,
+    height: 50,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2.5,
-    borderColor: GOLD,
-    borderRadius: 22,
-    backgroundColor: '#FFF8E1',
-    paddingHorizontal: 10,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 13,
+    backgroundColor: INPUT_BG,
   },
-  coinsBoxEmoji: { fontSize: 24 },
-  coinsInput: { minWidth: 60, paddingVertical: 8, fontSize: 32, fontWeight: '900', color: INK },
+  coinsInput: { minWidth: 56, fontSize: 20, fontWeight: '800', color: INK, paddingVertical: 0 },
+  coinsUnit: { fontSize: 14, fontWeight: '600', color: MUTED },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   presetChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: '#FFF8E1',
-    borderWidth: 2,
-    borderColor: '#F7E2A8',
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: TOGGLE_BG,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
-  presetChipActive: { backgroundColor: GOLD, borderColor: GOLD_DARK },
-  presetText: { fontSize: 14, fontWeight: '900', color: '#9A6A10' },
+  presetChipActive: { backgroundColor: TEAL, borderColor: TEAL },
+  presetText: { fontSize: 13, fontWeight: '700', color: MUTED },
   presetTextActive: { color: '#FFFFFF' },
 
-  // Who gets it
-  toggleRow: { flexDirection: 'row', backgroundColor: '#F2EEFF', borderRadius: 20, padding: 4, gap: 4 },
-  toggleBtn: { flex: 1, paddingVertical: 12, borderRadius: 16, alignItems: 'center' },
-  toggleActive: { backgroundColor: '#7B61FF' },
-  toggleText: { fontSize: 15, fontWeight: '800', color: '#8A7CC2' },
+  // Availability
+  toggleRow: { flexDirection: 'row', backgroundColor: TOGGLE_BG, borderRadius: 14, padding: 4, gap: 4 },
+  toggleBtn: { flex: 1, paddingVertical: 13, paddingHorizontal: 6, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  toggleActive: { backgroundColor: TEAL },
+  toggleText: { fontSize: 13, fontWeight: '700', color: MUTED, textAlign: 'center' },
   toggleTextActive: { color: '#FFFFFF' },
   childSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
   childChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingLeft: 6,
+    gap: 7,
+    paddingLeft: 8,
     paddingRight: 14,
-    paddingVertical: 6,
-    borderRadius: 24,
-    backgroundColor: '#F7F5FF',
-    borderWidth: 2,
-    borderColor: '#E4DDFF',
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: INPUT_BG,
+    borderWidth: 1.5,
+    borderColor: CARD_BORDER,
   },
-  childChipSelected: { backgroundColor: '#EFEAFF', borderColor: '#7B61FF' },
-  childAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
-  childAvatarOn: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#7B61FF' },
-  childChipEmoji: { fontSize: 20 },
-  childChipText: { fontSize: 15, fontWeight: '800', color: '#8A7CC2' },
-  childChipTextSelected: { color: '#5A43B8' },
-  childCheck: { fontSize: 15, fontWeight: '900', color: '#7B61FF' },
+  childChipSelected: { backgroundColor: TEAL_SOFT, borderColor: '#11A79B' },
+  childAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center' },
+  childChipEmoji: { fontSize: 18 },
+  childChipText: { fontSize: 14, fontWeight: '700', color: MUTED },
+  childChipTextSelected: { color: TEAL_DARK },
+  childCheck: { fontSize: 14, fontWeight: '800', color: TEAL },
 
   // Delete
   deleteBtn: {
-    borderWidth: 2,
-    borderColor: '#E63946',
-    borderRadius: 20,
-    padding: 15,
+    borderWidth: 1.5,
+    borderColor: '#E65A62',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 15,
+    padding: 16,
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    marginTop: 4,
+    marginTop: 6,
   },
-  deleteBtnText: { color: '#E63946', fontSize: 16, fontWeight: '800' },
+  deleteBtnText: { color: DANGER, fontSize: 16, fontWeight: '800' },
 
   // Sticky bottom bar
   bottomBar: {
@@ -951,51 +822,49 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 28 : 16,
-    backgroundColor: 'rgba(243,251,249,0.96)',
+    backgroundColor: 'rgba(241,250,248,0.97)',
     borderTopWidth: 1,
-    borderTopColor: '#E3F1EE',
+    borderTopColor: CARD_BORDER,
   },
   saveBtn: {
     backgroundColor: TEAL,
-    borderRadius: 24,
-    paddingVertical: 17,
+    borderRadius: 15,
+    padding: 17,
     alignItems: 'center',
-    borderBottomWidth: 6,
-    borderBottomColor: TEAL_DARK,
   },
-  saveBtnDisabled: { backgroundColor: '#7FBDB7', borderBottomColor: '#6AA8A2' },
-  saveBtnText: { color: '#FFFFFF', fontSize: 19, fontWeight: '900', letterSpacing: 0.3 },
+  saveBtnDisabled: { opacity: 0.45 },
+  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 
-  // Emoji modal
+  // Icon modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    padding: 22,
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
     paddingBottom: 36,
     maxHeight: '75%',
   },
-  modalHandle: { alignSelf: 'center', width: 48, height: 6, borderRadius: 3, backgroundColor: '#F4C9DA', marginBottom: 14 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  modalTitle: { fontSize: 22, fontWeight: '900', color: INK },
-  closeText: { fontSize: 20, color: '#B0A6C9', padding: 4 },
-  emojiGroup: { marginBottom: 16 },
-  emojiGroupLabel: { fontSize: 14, fontWeight: '900', color: '#E85A93', marginBottom: 8 },
-  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  modalHandle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: BORDER, marginBottom: 14 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: INK },
+  closeText: { fontSize: 15, fontWeight: '800', color: TEAL, padding: 4 },
+  emojiGroup: { marginBottom: 18 },
+  emojiGroupLabel: { fontSize: 12, fontWeight: '700', color: MUTED, letterSpacing: 0.8, marginBottom: 9 },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   emojiOption: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#FFF0F6',
+    width: 54,
+    height: 54,
+    borderRadius: 15,
+    backgroundColor: TOGGLE_BG,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2.5,
+    borderWidth: 1.5,
     borderColor: 'transparent',
   },
-  emojiSelected: { borderColor: '#E85A93', backgroundColor: '#FFE3EF' },
-  emojiOptionText: { fontSize: 30 },
+  emojiSelected: { borderColor: '#11A79B', backgroundColor: TEAL_SOFT },
+  emojiOptionText: { fontSize: 28 },
 });
