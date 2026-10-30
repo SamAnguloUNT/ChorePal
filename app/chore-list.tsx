@@ -6,9 +6,10 @@ import {
   Alert,
   SafeAreaView, ScrollView,
   StyleSheet,
-  Text, TouchableOpacity,
+  Text,
   View
 } from 'react-native';
+import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -53,7 +54,7 @@ export default function ChoreListScreen() {
             where('parentId', '==', user.uid)
           );
           const childrenSnap = await getDocs(childrenQuery);
-          const children = childrenSnap.docs.map(doc => ({
+          const children: any[] = childrenSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           }));
@@ -64,7 +65,7 @@ export default function ChoreListScreen() {
             where('parentId', '==', user.uid)
           );
           const choresSnap = await getDocs(choresQuery);
-          const allChores = choresSnap.docs.map(doc => ({
+          const allChores: any[] = choresSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           }));
@@ -75,7 +76,7 @@ export default function ChoreListScreen() {
             where('parentId', '==', user.uid)
           );
           const submissionsSnap = await getDocs(submissionsQuery);
-          const submissions = submissionsSnap.docs.map(doc => ({
+          const submissions: any[] = submissionsSnap.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           }));
@@ -168,15 +169,15 @@ export default function ChoreListScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <PressableScale style={styles.backBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+        </PressableScale>
         <Text style={styles.headerTitle}>Chore List</Text>
-        <TouchableOpacity
+        <PressableScale
           style={styles.addBtn}
           onPress={() => router.push('/create-chore')}>
           <Text style={styles.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
       {loading ? (
@@ -215,24 +216,26 @@ export default function ChoreListScreen() {
               <View key={child.childId} style={styles.childSection}>
 
                 {/* Child Header */}
-                <TouchableOpacity
+                <PressableScale
                   style={styles.childHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Toggle chores for ${child.childName}`}
                   onPress={() => setExpandedChild(
                     expandedChild === child.childId ? null : child.childId
                   )}>
                   <View style={styles.childLeft}>
                     <View style={styles.childAvatarCircle}>
-                      <Text style={styles.childAvatarEmoji}>{child.childAvatar}</Text>
+                      <Text style={styles.childAvatarEmoji}>{child.childAvatar || '👧'}</Text>
                     </View>
                     <View>
                       <Text style={styles.childName}>{child.childName}</Text>
-                      <Text style={styles.childChoreCount}>{child.chores.length} chores</Text>
+                      <Text style={styles.childChoreCount}>{child.chores.length} {child.chores.length === 1 ? 'chore' : 'chores'}</Text>
                     </View>
                   </View>
                   <Text style={styles.expandArrow}>
                     {expandedChild === child.childId ? '▼' : '›'}
                   </Text>
-                </TouchableOpacity>
+                </PressableScale>
 
                 {/* Chores List */}
                 {expandedChild === child.childId && (
@@ -244,9 +247,11 @@ export default function ChoreListScreen() {
                         const status = STATUS_CONFIG[chore.status] || STATUS_CONFIG['pending'];
                         const priority = PRIORITY_CONFIG[chore.priority] || PRIORITY_CONFIG['medium'];
                         return (
-                          <TouchableOpacity
+                          <PressableScale
                             key={chore.id}
                             style={styles.choreCard}
+                             accessibilityRole="button"
+                             accessibilityLabel={`Manage ${chore.title}`}
                             onPress={() => handleEditChore(chore, child.childName)}>
 
                             {/* Priority Bar */}
@@ -272,17 +277,17 @@ export default function ChoreListScreen() {
 
                             <Text style={styles.editArrow}>›</Text>
 
-                          </TouchableOpacity>
+                          </PressableScale>
                         );
                       })
                     )}
 
                     {/* Add Chore Button */}
-                    <TouchableOpacity
+                    <PressableScale
                       style={styles.addChoreBtn}
                       onPress={() => router.push('/create-chore')}>
                       <Text style={styles.addChoreBtnText}>+ Add Chore for {child.childName}</Text>
-                    </TouchableOpacity>
+                    </PressableScale>
                   </View>
                 )}
 
@@ -295,28 +300,28 @@ export default function ChoreListScreen() {
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity style={[styles.navItem, styles.navActive]}>
+        <View style={[styles.navItem, styles.navActive]}>
           <Text style={styles.navEmoji}>📋</Text>
           <Text style={[styles.navText, styles.navTextActive]}>Chores</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </View>
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.push('/parent-dashboard')}>
           <Text style={styles.navEmoji}>👨‍👩‍👧</Text>
           <Text style={styles.navText}>Kids</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </PressableScale>
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.push('/rewards-list')}>
           <Text style={styles.navEmoji}>⭐</Text>
           <Text style={styles.navText}>Rewards</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </PressableScale>
+        <PressableScale
           style={styles.navItem}
           onPress={() => router.push('/approvals')}>
           <Text style={styles.navEmoji}>✅</Text>
           <Text style={styles.navText}>Approvals</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
     </SafeAreaView>
@@ -324,130 +329,102 @@ export default function ChoreListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: '#F3FBF9' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14,
   },
-  backText: { fontSize: 16, color: '#4ECDC4', fontWeight: '600' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#2D2D2D' },
+  backBtn: { paddingVertical: 6, paddingRight: 8 },
+  backText: { fontSize: 16, color: '#0F7F76', fontWeight: '700' },
+  headerTitle: { fontSize: 22, fontWeight: '900', color: '#1F2D2B' },
   addBtn: {
-    backgroundColor: '#4ECDC4',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: '#0F7F76', borderRadius: 14, paddingHorizontal: 14,
+    paddingVertical: 9, shadowColor: '#0F7F76', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
   },
-  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  addBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { fontSize: 14, color: '#888', fontWeight: '600' },
-  scroll: { padding: 24, paddingBottom: 100 },
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  loadingText: { fontSize: 14, color: '#6B7C79', fontWeight: '600' },
+  scroll: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 130 },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 18 },
   statCard: {
-    flex: 1,
-    backgroundColor: '#F9F9F9',
-    borderRadius: 14,
-    padding: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#EEE',
+    flex: 1, minHeight: 84, backgroundColor: '#FFFFFF', borderRadius: 20,
+    paddingVertical: 14, paddingHorizontal: 4, alignItems: 'center',
+    justifyContent: 'center', borderWidth: 1.5, borderColor: '#DDF1EE',
   },
   statCardGreen: { backgroundColor: '#E8F5E9', borderColor: '#66BB6A' },
   statCardTeal: { backgroundColor: '#F0FFFE', borderColor: '#4ECDC4' },
-  statNumber: { fontSize: 24, fontWeight: '800', color: '#2D2D2D' },
-  statLabel: { fontSize: 11, color: '#888', fontWeight: '600', textAlign: 'center', marginTop: 2 },
-  emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyEmoji: { fontSize: 52 },
-  emptyTitle: { fontSize: 22, fontWeight: '800', color: '#2D2D2D' },
-  emptySubtitle: { fontSize: 15, color: '#888' },
+  statNumber: { fontSize: 24, fontWeight: '900', color: '#1F2D2B' },
+  statLabel: {
+    fontSize: 12, color: '#6B7C79', fontWeight: '600', textAlign: 'center', marginTop: 2,
+  },
+  emptyState: {
+    alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24, gap: 8,
+    backgroundColor: '#FFFFFF', borderRadius: 22, borderWidth: 1.5, borderColor: '#DDF1EE',
+  },
+  emptyEmoji: { fontSize: 56 },
+  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#1F2D2B' },
+  emptySubtitle: { fontSize: 14, color: '#6B7C79', textAlign: 'center' },
   childSection: {
-    marginBottom: 16,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#EEE',
-    overflow: 'hidden',
+    marginBottom: 16, borderRadius: 22, borderWidth: 1.5, borderColor: '#DDF1EE',
+    backgroundColor: '#FFFFFF', overflow: 'hidden', shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10,
+    elevation: 2,
   },
   childHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#F0FFFE',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: 16, backgroundColor: '#E6F8F6',
   },
-  childLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  childLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   childAvatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#4ECDC4',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 48, height: 48, borderRadius: 24, backgroundColor: '#4ECDC4',
+    alignItems: 'center', justifyContent: 'center',
   },
-  childAvatarEmoji: { fontSize: 24 },
-  childName: { fontSize: 16, fontWeight: '800', color: '#2D2D2D' },
-  childChoreCount: { fontSize: 12, color: '#888', marginTop: 2 },
-  expandArrow: { fontSize: 20, color: '#4ECDC4', fontWeight: '700' },
-  choresList: { padding: 12, gap: 10, backgroundColor: '#fff' },
-  noChoresText: { fontSize: 14, color: '#888', textAlign: 'center', padding: 12, fontStyle: 'italic' },
+  childAvatarEmoji: { fontSize: 26 },
+  childName: { fontSize: 17, fontWeight: '800', color: '#1F2D2B' },
+  childChoreCount: { fontSize: 12, color: '#6B7C79', marginTop: 2 },
+  expandArrow: { fontSize: 20, color: '#0F7F76', fontWeight: '700' },
+  choresList: { padding: 12, gap: 12, backgroundColor: '#FFFFFF' },
+  noChoresText: {
+    fontSize: 14, color: '#6B7C79', textAlign: 'center', padding: 12, fontStyle: 'italic',
+  },
   choreCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9F9F9',
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#EEE',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',
+    borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: '#E3F1EE',
   },
   priorityBar: { width: 5, alignSelf: 'stretch' },
   choreContent: { flex: 1, padding: 12 },
   choreTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 8, gap: 6,
   },
-  choreTitle: { fontSize: 14, fontWeight: '700', color: '#2D2D2D', flex: 1, marginRight: 8 },
+  choreTitle: { fontSize: 15, fontWeight: '800', color: '#1F2D2B', flex: 1 },
   statusBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
+    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1,
   },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  choreBottom: { flexDirection: 'row', gap: 12 },
-  choreCoins: { fontSize: 12, color: '#888', fontWeight: '600' },
-  choreDeadline: { fontSize: 12, color: '#888', fontWeight: '600' },
-  choreRepeatable: { fontSize: 12, color: '#4ECDC4', fontWeight: '600' },
-  editArrow: { fontSize: 20, color: '#CCC', paddingHorizontal: 12 },
+  statusText: { fontSize: 11, fontWeight: '800' },
+  choreBottom: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  choreCoins: { fontSize: 12, color: '#B7791F', fontWeight: '700' },
+  choreDeadline: { fontSize: 12, color: '#6B7C79', fontWeight: '600' },
+  choreRepeatable: { fontSize: 12, color: '#0F7F76', fontWeight: '700' },
+  editArrow: { fontSize: 22, color: '#C9D6D4', paddingHorizontal: 10 },
   addChoreBtn: {
-    borderWidth: 1.5,
-    borderColor: '#4ECDC4',
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    borderStyle: 'dashed',
+    borderWidth: 1.5, borderColor: '#4ECDC4', borderRadius: 14,
+    paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center',
+    borderStyle: 'dashed', backgroundColor: '#F0FFFE',
   },
-  addChoreBtnText: { color: '#4ECDC4', fontWeight: '700', fontSize: 14 },
+  addChoreBtnText: { color: '#0F7F76', fontWeight: '800', fontSize: 14 },
   bottomNav: {
-    flexDirection: 'row',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    paddingVertical: 10,
-    paddingBottom: 24,
+    flexDirection: 'row', position: 'absolute', bottom: 0, left: 0, right: 0,
+    gap: 8, backgroundColor: '#FFFFFF', borderTopLeftRadius: 26,
+    borderTopRightRadius: 26, paddingTop: 12, paddingHorizontal: 16,
+    paddingBottom: 26, shadowColor: '#0F7F76',
+    shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1,
+    shadowRadius: 12, elevation: 10,
   },
-  navItem: { flex: 1, alignItems: 'center', gap: 2 },
-  navActive: {},
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 8, borderRadius: 18 },
+  navActive: { backgroundColor: '#E6F8F6' },
   navEmoji: { fontSize: 22 },
-  navText: { fontSize: 11, color: '#888', fontWeight: '600' },
-  navTextActive: { color: '#4ECDC4' },
+  navText: { fontSize: 11, color: '#6B7C79', fontWeight: '700' },
+  navTextActive: { color: '#0F7F76', fontWeight: '800' },
 });
