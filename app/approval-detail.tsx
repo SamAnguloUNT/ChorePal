@@ -75,6 +75,7 @@ export default function ApprovalDetailScreen() {
     aiApproved,
     aiConfidence,
     aiDescription,
+    aiSkipped,
   } = useLocalSearchParams();
 
   const [comment, setComment] = useState('');
@@ -256,7 +257,8 @@ export default function ApprovalDetailScreen() {
     );
   };
 
-  const isAiApproved = aiApproved === 'true';
+  const isAiSkipped = aiSkipped === 'true';
+  const isAiApproved = aiApproved === 'true' && !isAiSkipped;
   const parsedConfidence = parseFloat(aiConfidence as string);
   const confidencePercent = Number.isFinite(parsedConfidence) ? Math.round(parsedConfidence * 100) : 0;
   const priorityStyle = PRIORITY_STYLES[String(priority ?? 'medium').toLowerCase()] || PRIORITY_STYLES.medium;
@@ -324,13 +326,13 @@ export default function ApprovalDetailScreen() {
             ]}>
               <View style={styles.aiHeader}>
                 <View style={[styles.aiEmojiBox, { backgroundColor: isAiApproved ? '#E0FFF4' : '#FFF3CD' }]}>
-                  <Text style={styles.aiEmoji}>{isAiApproved ? '🤖✅' : '🤖⚠️'}</Text>
+                  <Text style={styles.aiEmoji}>{isAiSkipped ? '👀' : isAiApproved ? '🤖✅' : '🤖⚠️'}</Text>
                 </View>
                 <View style={styles.aiInfo}>
                   <Text style={styles.aiStatus}>
-                    {isAiApproved ? 'ChorePal approved' : 'Needs your review'}
+                    {isAiSkipped ? 'AI check is off — please review the photo' : isAiApproved ? 'ChorePal approved' : 'Needs your review'}
                   </Text>
-                  <View style={styles.confidenceTrack}>
+                  {!isAiSkipped && (<View style={styles.confidenceTrack}>
                     <View
                       style={[
                         styles.confidenceFill,
@@ -340,8 +342,8 @@ export default function ApprovalDetailScreen() {
                         },
                       ]}
                     />
-                  </View>
-                  <Text style={styles.aiConfidence}>Confidence: {confidencePercent}%</Text>
+                  </View>)}
+                  {!isAiSkipped && <Text style={styles.aiConfidence}>Confidence: {confidencePercent}%</Text>}
                 </View>
               </View>
               {!!aiDescription && <Text style={styles.aiDescription}>{aiDescription}</Text>}

@@ -21,6 +21,7 @@ import {
 
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
+import { migrateLegacyAllChores } from '../utils/choreModel';
 import { runRetentionCleanup } from '../utils/dataRetention';
 import { registerForPushNotifications } from '../utils/notifications';
 
@@ -65,12 +66,14 @@ export default function ParentDashboard() {
         let parentPushToken: string | null = null;
         let homeLocation: any = null;
         let notificationsOff = false;
+        let skipAi = false;
 
         const docSnap = await getDoc(doc(db, 'users', user.uid));
         if (docSnap.exists()) {
           const parentData = docSnap.data();
           setParentName(parentData.name || '');
           homeLocation = parentData.homeLocation || null;
+          skipAi = parentData.skipAiVerification === true;
 
           // FIX: This used to require `notificationsEnabled` to be exactly true, so if
           // the field was missing the parent never registered a token. Notifications are
@@ -95,12 +98,17 @@ export default function ParentDashboard() {
           .filter((child: any) => child.isDeleted !== true);
         setChildren(childrenData);
 
+        // Old shared "all children" chores become one chore per child (runs once, safe to repeat)
+        migrateLegacyAllChores(user.uid, childrenData as any[]).catch(e =>
+          console.log('Chore migration skipped:', e)
+        );
+
         // FIX: Child sessions can't read the parent's `users` doc (security rules), so
         // copy the parent's push token onto each child doc. The child app reads
         // `parentPushToken` from its own record when it submits a chore.
         // Also copy the saved home location onto each child doc, so a child added later
         // gets home reminders without the parent re-saving the location.
-        if (parentPushToken || homeLocation || notificationsOff) {
+        if (parentPushToken || homeLocation || notificationsOff || skipAi || childrenSnap.docs.length > 0) {
           try {
             await Promise.all(
               childrenSnap.docs.map((d) => {
@@ -118,13 +126,15 @@ export default function ParentDashboard() {
                   updates.parentPushToken = null;
                 }
 
+                // Keep the skip-AI setting in step on every child (also covers new children)
+                if ((data.skipAiVerification === true) !== skipAi) {
+                  updates.skipAiVerification = skipAi;
+                }
+
                 const h = data.homeLocation;
-                const homeDiffers =
-                  !h ||
-                  h.latitude !== homeLocation?.latitude ||
-                  h.longitude !== homeLocation?.longitude ||
-                  h.radius !== homeLocation?.radius;
-                if (homeLocation && homeDiffers) {
+                // Only fill in a home when the child has none, so a home the child set
+                // themselves in Child Settings isn't overwritten on every dashboard visit.
+                if (homeLocation && !h) {
                   updates.homeLocation = homeLocation;
                 }
 

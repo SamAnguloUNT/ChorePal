@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
+import { deletePhotoFromStorage } from '../utils/photoCleanup';
 
 const formatTimeAgo = (date: Date) => {
   const now = new Date();
@@ -112,7 +113,35 @@ export default function ApprovalsScreen() {
           where('status', '==', 'pending')
         );
         const submissionsSnap = await getDocs(submissionsQuery);
-        const submissionsData = submissionsSnap.docs
+
+        // A submission whose chore was deleted can never be reviewed properly, so hide it
+        // and clean it up. Only done when the chores loaded fine, so a network hiccup can't
+        // wipe real approvals.
+        let liveChoreIds: Set<string> | null = null;
+        try {
+          const choresSnap = await getDocs(query(collection(db, 'chores'), where('parentId', '==', user.uid)));
+          liveChoreIds = new Set(choresSnap.docs.map(c => c.id));
+        } catch {
+          liveChoreIds = null;
+        }
+        const liveDocs = submissionsSnap.docs.filter(d => {
+          if (!liveChoreIds) return true;
+          const alive = liveChoreIds.has((d.data() as any).choreId);
+          if (!alive) {
+            const x: any = d.data();
+            (async () => {
+              try {
+                if (x.photoPath || x.photoURL) {
+                  const ok = await deletePhotoFromStorage({ photoPath: x.photoPath, photoURL: x.photoURL });
+                  if (!ok) return;
+                }
+                await deleteDoc(d.ref);
+              } catch {}
+            })();
+          }
+          return alive;
+        });
+        const submissionsData = liveDocs
           .map(d => {
             const data: any = d.data();
             const date = data.submittedAt?.toDate ? data.submittedAt.toDate() : null;
@@ -149,7 +178,7 @@ export default function ApprovalsScreen() {
     setRefreshing(false);
   }, [loadSubmissions, refreshing]);
 
-  const aiOkCount = submissions.filter(s => s.aiApproved).length;
+  const aiOkCount = submissions.filter(s => s.aiApproved && !s.aiSkipped).length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -253,10 +282,11 @@ export default function ApprovalsScreen() {
                       aiApproved: item.aiApproved ? 'true' : 'false',
                       aiConfidence: item.aiConfidence?.toString() || '0',
                       aiDescription: item.aiDescription || '',
+                      aiSkipped: item.aiSkipped ? 'true' : 'false',
                     }
                   })}>
 
-                  <View style={[styles.stripe, { backgroundColor: item.aiApproved ? '#4ECDC4' : '#F4B942' }]} />
+                  <View style={[styles.stripe, { backgroundColor: item.aiApproved && !item.aiSkipped ? '#4ECDC4' : '#F4B942' }]} />
 
                   {/* Photo Thumbnail */}
                   <View style={styles.thumbWrap}>
@@ -287,12 +317,17 @@ export default function ApprovalsScreen() {
                       <View style={[styles.chip, { backgroundColor: '#EEF2F1' }]}>
                         <Text style={[styles.chipText, { color: '#6B7C79' }]}>⏰ {item.submittedAt}</Text>
                       </View>
+                      {item.late && (
+                        <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
+                          <Text style={[styles.chipText, { color: '#E63946' }]}>Late · was due {item.forDate}</Text>
+                        </View>
+                      )}
                       <View style={[
                         styles.chip,
-                        item.aiApproved ? { backgroundColor: '#E0FFF4' } : { backgroundColor: '#FFF8E1' },
+                        item.aiApproved && !item.aiSkipped ? { backgroundColor: '#E0FFF4' } : { backgroundColor: '#FFF8E1' },
                       ]}>
-                        <Text style={[styles.chipText, { color: item.aiApproved ? '#2A9D8F' : '#B7791F' }]}>
-                          {item.aiApproved ? '🤖 ✅ ChorePal verified' : '🤖 ⚠️ Check it'}
+                        <Text style={[styles.chipText, { color: item.aiApproved && !item.aiSkipped ? '#2A9D8F' : '#B7791F' }]}>
+                          {item.aiSkipped ? '👀 Your review' : item.aiApproved ? '🤖 ✅ ChorePal verified' : '🤖 ⚠️ Check it'}
                         </Text>
                       </View>
                     </View>

@@ -19,6 +19,7 @@ import FloatingBackground from '../components/FloatingBackground';
 import PressableScale from '../components/PressableScale';
 import { db } from '../config/firebase';
 import { ChildTheme, useChildTheme } from '../utils/childTheme';
+import { addDays, isDueOn, isRecurring, statusFor } from '../utils/choreSchedule';
 
 // Deadlines are saved by the parent app as "YYYY-MM-DD" strings (local dates).
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -127,6 +128,7 @@ export default function ChildCalendarScreen() {
 
   const [childName, setChildName] = useState('');
   const [chores, setChores] = useState<any[]>([]);
+  const [subs, setSubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
@@ -147,35 +149,20 @@ export default function ChildCalendarScreen() {
       setChildName(child.name || '');
       if (!child.parentId) { setChores([]); return; }
 
-      // Same query the dashboard uses: this child's chores plus the "all children" ones
+      // Same query the dashboard uses: only this child's own chores
       const choresSnap = await getDocs(query(
         collection(db, 'chores'),
         where('parentId', '==', child.parentId),
-        where('assignedTo', 'in', ['all', child.id])
+        where('assignedTo', '==', child.id)
       ));
 
-      const approvedSnap = await getDocs(query(
+      // All submissions; each day's status is worked out below (recurring chores per day)
+      const subsSnap = await getDocs(query(
         collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'approved')
+        where('childId', '==', child.id)
       ));
-      const pendingSnap = await getDocs(query(
-        collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'pending')
-      ));
-      const approvedIds = approvedSnap.docs.map(d => d.data().choreId);
-      const pendingIds = pendingSnap.docs.map(d => d.data().choreId);
-
-      setChores(choresSnap.docs.map(d => {
-        const data: any = d.data();
-        const status: ChoreStatus = approvedIds.includes(d.id)
-          ? 'approved'
-          : pendingIds.includes(d.id)
-            ? 'pending'
-            : 'todo';
-        return { id: d.id, ...data, status };
-      }));
+      setSubs(subsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
+      setChores(choresSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
     } catch (error) {
       console.error('Error loading calendar:', error);
     } finally {
@@ -195,16 +182,25 @@ export default function ChildCalendarScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  // Group chores by the day they are due (chores with no valid deadline can't go on a calendar)
+  // Group chores by the day they are due. Recurring chores appear on every scheduled day
+  // (60 days back to 90 days ahead), each day with its own status.
   const byDate = useMemo(() => {
     const map: Record<string, any[]> = {};
+    const toStatus = (st: string): ChoreStatus =>
+      st === 'approved' ? 'approved' : st === 'submitted' ? 'pending' : 'todo';
+    const from = addDays(today, -60);
+    const to = addDays(today, 90);
     chores.forEach(c => {
-      if (typeof c.deadline === 'string' && DATE_RE.test(c.deadline)) {
-        (map[c.deadline] = map[c.deadline] || []).push(c);
+      if (isRecurring(c)) {
+        for (let d = from; d <= to; d = addDays(d, 1)) {
+          if (isDueOn(c, d)) (map[d] = map[d] || []).push({ ...c, status: toStatus(statusFor(c, subs, d)) });
+        }
+      } else if (typeof c.deadline === 'string' && DATE_RE.test(c.deadline)) {
+        (map[c.deadline] = map[c.deadline] || []).push({ ...c, status: toStatus(statusFor(c, subs, c.deadline)) });
       }
     });
     return map;
-  }, [chores]);
+  }, [chores, subs]);
 
   const dotColor = (c: any, date: string) => {
     if (c.status === 'approved') return COLORS.approved;
