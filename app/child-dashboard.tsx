@@ -16,6 +16,7 @@ import {
   StyleSheet,
   Text, TouchableOpacity,
   TouchableWithoutFeedback,
+  useWindowDimensions,
   View
 } from 'react-native';
 import Celebration from '../components/Celebration';
@@ -25,6 +26,7 @@ import PressableScale from '../components/PressableScale';
 import TextToSpeech from '../components/TextToSpeech';
 import { db } from '../config/firebase';
 import { ChildTheme, useChildTheme } from '../utils/childTheme';
+import { addDays, isDueOn, isPastDue, isRecurring, MISSED_LOOKBACK_DAYS, statusFor, submissionsFor, toDateStr } from '../utils/choreSchedule';
 import { registerForPushNotifications, sendPushNotification } from '../utils/notifications';
 import { deletePhotoFromStorage } from '../utils/photoCleanup';
 import { uploadPhotoToStorage, uriToBase64 } from '../utils/uploadPhoto';
@@ -120,6 +122,8 @@ export default function ChildDashboard() {
   const [chores, setChores] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedChore, setSelectedChore] = useState<any>(null);
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const { width: winW, height: winH } = useWindowDimensions();
   const [photo, setPhoto] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
@@ -181,14 +185,13 @@ export default function ChildDashboard() {
         return;
       }
 
-      // FIX: Scope chores to this child's parent. Previously, 'all' matched every
-      // parent's "all children" chores in the whole database.
-      // NOTE: This query needs a composite index on parentId + assignedTo.
-      // Firestore will log a link to create it the first time this runs.
+      // Every chore belongs to exactly one child now, so a child only ever loads their own.
+      // (A child added later can't inherit old chores. Old shared 'all' chores are converted
+      // into per-child chores by the parent app.)
       const choresQuery = query(
         collection(db, 'chores'),
         where('parentId', '==', child.parentId),
-        where('assignedTo', 'in', ['all', child.id])
+        where('assignedTo', '==', child.id)
       );
       const choresSnap = await getDocs(choresQuery);
       let choresData = choresSnap.docs.map(doc => ({
@@ -198,53 +201,31 @@ export default function ChildDashboard() {
         verified: false,
       }));
 
-      const approvedQuery = query(
-        collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'approved')
-      );
-      const approvedSnap = await getDocs(approvedQuery);
-      const approvedChoreIds = approvedSnap.docs.map(d => d.data().choreId);
+      // All of this child's submissions. Recurring chores only look at the ones for TODAY
+      // (submission.forDate), so finishing "Make bed" today doesn't count for tomorrow.
+      const subsSnap = await getDocs(query(collection(db, 'submissions'), where('childId', '==', child.id)));
+      const allSubs = subsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
 
-      const pendingQuery = query(
-        collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'pending')
-      );
-      const pendingSnap = await getDocs(pendingQuery);
-      const pendingChoreIds = pendingSnap.docs.map(d => d.data().choreId);
+      const todayStr = toDateStr(new Date());
+      const missedFrom = addDays(todayStr, -MISSED_LOOKBACK_DAYS);
 
-      // Parent feedback: look at approved + rejected submissions and keep the newest
-      // review for each chore (its status and the comment the parent wrote).
-      const rejectedQuery = query(
-        collection(db, 'submissions'),
-        where('childId', '==', child.id),
-        where('status', '==', 'rejected')
-      );
-      const rejectedSnap = await getDocs(rejectedQuery);
-      const latestReview: Record<string, { when: number; status: string; comment: string }> = {};
-      [...approvedSnap.docs, ...rejectedSnap.docs].forEach(d => {
-        const s: any = d.data();
-        const when = Math.max(toMillis(s.approvedAt), toMillis(s.rejectedAt), toMillis(s.submittedAt));
-        const existing = latestReview[s.choreId];
-        if (!existing || when > existing.when) {
-          latestReview[s.choreId] = {
-            when,
-            status: s.status,
-            comment: String(s.parentComment || '').trim(),
-          };
-        }
-      });
-
-      choresData = choresData.map(chore => {
-        const isPending = pendingChoreIds.includes(chore.id);
-        const review = latestReview[chore.id];
+      choresData = choresData.map((chore: any) => {
+        const status = statusFor(chore, allSubs, todayStr);
+        const subs = submissionsFor(chore, allSubs, todayStr);
+        const review = subs.find(s => s.status === 'approved' || s.status === 'rejected');
+        const isPending = status === 'submitted';
+        // A one-time chore from the last few days that never got done (or was sent back)
+        const missed =
+          isPastDue(chore, todayStr) &&
+          chore.deadline >= missedFrom &&
+          (status === 'todo' || status === 'rejected');
         return {
           ...chore,
-          completed: approvedChoreIds.includes(chore.id) || isPending,
-          verified: approvedChoreIds.includes(chore.id),
+          completed: status === 'approved' || isPending,
+          verified: status === 'approved',
+          missed,
           // Hide an old note while a newer resubmission is waiting for review
-          feedback: !isPending && review ? review.comment : '',
+          feedback: !isPending && review ? String(review.parentComment || '').trim() : '',
           feedbackStatus: !isPending && review ? review.status : null,
         };
       });
@@ -331,14 +312,27 @@ export default function ChildDashboard() {
 
   // Order: required chores first, then optional ones. Inside each group, unfinished
   // chores come before finished ones, and higher priority comes first.
-  // The dashboard only shows chores due TODAY, plus overdue chores that still aren't approved
-  // so they don't silently disappear. Future chores live on the Calendar page.
+  // The dashboard only shows chores due TODAY (or with no deadline). Overdue chores do NOT
+  // carry over to following days; past days stay on the Calendar page, as do future chores.
   const today = toLocalDateString(new Date());
   const hasDeadline = (c: any) => typeof c.deadline === 'string' && DATE_RE.test(c.deadline);
+  // Due today: recurring chores whose schedule includes today, one-time chores due today,
+  // and chores with no date at all.
+  const isVisibleToday = (c: any) =>
+    isRecurring(c) ? isDueOn(c, today) : !hasDeadline(c) || c.deadline === today;
   const visibleChores = chores
-    .filter(c => !hasDeadline(c) || c.deadline === today || (c.deadline < today && !c.verified))
-    .map(c => ({ ...c, overdue: hasDeadline(c) && c.deadline < today }));
-  const upcomingCount = chores.filter(c => hasDeadline(c) && c.deadline > today).length;
+    .filter(isVisibleToday)
+    .map(c => ({ ...c, overdue: false }));
+  // Missed: one-time chores from the last few days that weren't done. Kept in their own
+  // small section so they never pile onto today's list or today's progress.
+  const missedChores = chores
+    .filter((c: any) => c.missed)
+    .map(c => ({ ...c, overdue: true }))
+    .sort((a: any, b: any) => (a.deadline < b.deadline ? 1 : -1));
+  const upcomingCount = chores.filter(
+    (c: any) => !isVisibleToday(c) && !c.missed && (isRecurring(c) || (hasDeadline(c) && c.deadline > today))
+  ).length;
+  const [showMissed, setShowMissed] = useState(false);
 
   const sortedChores = [...visibleChores].sort((a, b) => {
     const optionalDiff = Number(isChoreOptional(a)) - Number(isChoreOptional(b));
@@ -435,8 +429,13 @@ export default function ChildDashboard() {
 
       // Step 1 — Run Google Vision AI FIRST, on the photo that is still only on this phone.
       // Nothing is uploaded yet, so a photo ChorePal does not verify is never stored anywhere.
-      const base64 = await uriToBase64(photo);
-      const aiAnalysis = await analyzeImage(base64, selectedChore.title);
+      // When the parent turned AI checking off in their Settings, skip Vision entirely: the
+      // photo goes straight to the parent for manual review.
+      const aiSkipped = childData.skipAiVerification === true;
+      const base64 = aiSkipped ? '' : await uriToBase64(photo);
+      const aiAnalysis = aiSkipped
+        ? { isComplete: true, confidence: 0, description: 'Your photo is being sent to your parent to check.' }
+        : await analyzeImage(base64, selectedChore.title);
 
       // Step 2 — Show AI result in modal
       setAiResult(aiAnalysis);
@@ -464,9 +463,15 @@ export default function ChildDashboard() {
           parentId: childData.parentId,
           photoURL,
           photoPath,
+          // The day this submission counts for. Recurring: today. One-time: its due day.
+          forDate: !isRecurring(selectedChore) && typeof selectedChore.deadline === 'string' && selectedChore.deadline
+            ? selectedChore.deadline
+            : toDateStr(new Date()),
+          late: !isRecurring(selectedChore) && typeof selectedChore.deadline === 'string' && selectedChore.deadline < toDateStr(new Date()),
           aiApproved: aiAnalysis.isComplete,
+          aiSkipped,
           aiConfidence: aiAnalysis.confidence,
-          aiDescription: aiAnalysis.description,
+          aiDescription: aiSkipped ? '' : aiAnalysis.description,
           status: 'pending',
           submittedAt: new Date(),
         });
@@ -497,7 +502,7 @@ export default function ChildDashboard() {
 
       // Step 8 — Update local chore state
       setChores(prev => prev.map(c =>
-        c.id === selectedChore.id ? { ...c, completed: true, verified: false } : c
+        c.id === selectedChore.id ? { ...c, completed: true, verified: false, missed: false } : c
       ));
 
       // Step 9 — Save progress to AsyncStorage
@@ -720,6 +725,55 @@ export default function ChildDashboard() {
           )}
         </View>
 
+        {/* Missed chores: collapsed by default so they don't pile up on today */}
+        {missedChores.length > 0 && (
+          <View style={{ marginTop: 18 }}>
+            <TouchableOpacity
+              onPress={() => setShowMissed(v => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={`${showMissed ? 'Hide' : 'Show'} missed chores`}
+              style={styles.missedHeader}>
+              <Text style={styles.missedHeaderText}>
+                😕 Missed ({missedChores.length})
+              </Text>
+              <Text style={styles.missedHeaderArrow}>{showMissed ? '▼' : '›'}</Text>
+            </TouchableOpacity>
+            {showMissed && (
+              <View style={[styles.choresList, { marginTop: 8 }]}>
+                <Text style={styles.missedHint}>You can still do these. Your parent decides if they count.</Text>
+                {missedChores.map((chore: any) => (
+                  <PressableScale
+                    key={chore.id}
+                    onPress={() => openVerification(chore)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open missed chore: ${chore.title}`}
+                    style={styles.choreCard}>
+                    <View style={[styles.priorityStripe, { backgroundColor: '#E63946' }]} />
+                    <View style={styles.choreBody}>
+                      <View style={styles.choreTextBlock}>
+                        <Text style={styles.choreTitle} numberOfLines={2}>{chore.title}</Text>
+                        <View style={styles.chipRow}>
+                          <View style={[styles.chip, { backgroundColor: '#FFF3CD' }]}>
+                            <Text style={[styles.chipText, { color: '#B7791F' }]}>🪙 {chore.coins ?? 0}</Text>
+                          </View>
+                          <View style={[styles.chip, { backgroundColor: '#FFE5E5' }]}>
+                            <Text style={[styles.chipText, { color: '#E63946' }]}>
+                              Was due {new Date(chore.deadline + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            </Text>
+                          </View>
+                        </View>
+                        {!!chore.feedback && (
+                          <Text style={styles.feedbackLine} numberOfLines={1}>💬 {chore.feedback}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </PressableScale>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
       </ScrollView>
 
       {/* Bottom Nav */}
@@ -918,7 +972,16 @@ export default function ChildDashboard() {
 
                 {/* Photo Preview */}
                 {photo && (
-                  <Image source={{ uri: photo }} style={styles.photoPreview} />
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => setPhotoViewerVisible(true)}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel="View photo full screen">
+                    <Image source={{ uri: photo }} style={styles.photoPreview} />
+                    <View style={styles.expandHint}>
+                      <Text style={styles.expandHintText}>🔍 Tap to see it big</Text>
+                    </View>
+                  </TouchableOpacity>
                 )}
 
                 {/* AI Feedback */}
@@ -1012,6 +1075,38 @@ export default function ChildDashboard() {
             )}
           </View>
         </TouchableWithoutFeedback>
+
+        {/* Full-screen photo viewer. Lives inside the chore popup so it opens on top of it. */}
+        <Modal
+          visible={photoViewerVisible && !!photo}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPhotoViewerVisible(false)}>
+          <View style={styles.viewerOverlay}>
+            {/* Pinch to zoom works on iOS; Android shows the full photo without zoom */}
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.viewerContent}
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              centerContent
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}>
+              {photo && (
+                <Image source={{ uri: photo }} style={{ width: winW, height: winH * 0.8 }} resizeMode="contain" />
+              )}
+            </ScrollView>
+            <SafeAreaView style={styles.viewerTopBar} pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.viewerCloseBtn}
+                onPress={() => setPhotoViewerVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close photo">
+                <Text style={styles.viewerCloseText}>✕ Close</Text>
+              </TouchableOpacity>
+            </SafeAreaView>
+          </View>
+        </Modal>
       </Modal>
 
     </SafeAreaView>
@@ -1120,6 +1215,14 @@ const makeStyles = (t: ChildTheme) => StyleSheet.create({
   noChoresEmoji: { fontSize: 56 },
   noChoresText: { fontSize: 18, fontWeight: '800', color: t.text },
   noChoresHint: { fontSize: 14, color: t.muted, textAlign: 'center' },
+  missedHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingHorizontal: 16, borderRadius: 16,
+    backgroundColor: t.dangerTint, borderWidth: 1, borderColor: t.border,
+  },
+  missedHeaderText: { fontSize: 16, fontWeight: '800', color: t.danger },
+  missedHeaderArrow: { fontSize: 18, fontWeight: '800', color: t.danger },
+  missedHint: { fontSize: 13, color: t.muted, marginBottom: 4 },
   optionalHeader: { fontSize: 17, fontWeight: '800', color: '#7B61FF', marginTop: 12 },
   choreCard: {
     flexDirection: 'row',
@@ -1302,6 +1405,19 @@ const makeStyles = (t: ChildTheme) => StyleSheet.create({
   closeText: { fontSize: 18, color: t.muted },
   modalTitle: { fontSize: 22, fontWeight: '800', color: t.text, marginBottom: 6 },
   modalSubtitle: { fontSize: 14, color: t.muted, marginBottom: 16, lineHeight: 20 },
+  expandHint: {
+    position: 'absolute', right: 8, bottom: 24, backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  expandHintText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' },
+  viewerContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
+  viewerTopBar: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'flex-end' },
+  viewerCloseBtn: {
+    marginTop: 10, marginRight: 18, backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9,
+  },
+  viewerCloseText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   photoPreview: {
     width: '100%',
     height: 160,

@@ -18,6 +18,7 @@ import {
   Easing,
   Linking,
   Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -155,6 +156,9 @@ export default function SettingsScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [skipAi, setSkipAi] = useState(false);
+  const [aiCheckVisible, setAiCheckVisible] = useState(false);
+  const [savingSkipAi, setSavingSkipAi] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -183,6 +187,7 @@ export default function SettingsScreen() {
           // Default to ON so the switch matches the parent dashboard, which registers
           // for push notifications unless this is explicitly false.
           setNotificationsEnabled(data.notificationsEnabled ?? true);
+          setSkipAi(data.skipAiVerification === true);
         }
       } catch (error) {
         console.error('Error loading profile:', error);
@@ -272,6 +277,25 @@ export default function SettingsScreen() {
     await Promise.all(
       kids.docs.map((d) => updateDoc(d.ref, { parentPushToken: token }))
     );
+  };
+
+  // Skip AI photo checking. Children can't read the parent's `users` doc, so the setting is
+  // saved there AND copied to each child doc (same pattern as the push token).
+  const handleSkipAiToggle = async (value: boolean) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      setSavingSkipAi(true);
+      await updateDoc(doc(db, 'users', user.uid), { skipAiVerification: value });
+      const kids = await getDocs(query(collection(db, 'children'), where('parentId', '==', user.uid)));
+      await Promise.all(kids.docs.map((d) => updateDoc(d.ref, { skipAiVerification: value })));
+      setSkipAi(value);
+    } catch (error) {
+      console.error('Skip AI setting error:', error);
+      Alert.alert('Error', 'Unable to update this setting. Please try again.');
+    } finally {
+      setSavingSkipAi(false);
+    }
   };
 
   const handleNotificationsToggle = async (enabled: boolean) => {
@@ -434,6 +458,12 @@ export default function SettingsScreen() {
       ],
     },
     {
+      title: 'Chores',
+      items: [
+        { icon: '🤖', label: `ChorePal Photo Check: ${skipAi ? 'Off' : 'On'}`, onPress: () => setAiCheckVisible(true), tint: '#E6F8F6' },
+      ],
+    },
+    {
       title: 'Support',
       tall: true,
       items: [
@@ -586,7 +616,12 @@ export default function SettingsScreen() {
 
           <View style={styles.modalContent}>
 
-            <View style={styles.notificationSetting}>
+            <Pressable
+              style={({ pressed }) => [styles.notificationSetting, pressed && { opacity: 0.7 }]}
+              onPress={() => !savingNotifications && handleNotificationsToggle(!notificationsEnabled)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: notificationsEnabled, disabled: savingNotifications }}
+              accessibilityLabel="Push notifications">
               <View style={styles.notificationTextContainer}>
                 <Text style={styles.notificationTitle}>
                   Push Notifications
@@ -603,7 +638,7 @@ export default function SettingsScreen() {
                 disabled={savingNotifications}
                 trackColor={{ false: '#D5DEDC', true: '#4ECDC4' }}
               />
-            </View>
+            </Pressable>
 
             {/* Home reminders — opens the set-home screen */}
             <PressableScale
@@ -629,6 +664,51 @@ export default function SettingsScreen() {
               You can also change notification permissions later in your phones settings.
             </Text>
 
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* AI Photo Check Modal */}
+      <Modal
+        visible={aiCheckVisible}
+        animationType="slide"
+        onRequestClose={() => setAiCheckVisible(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <PressableScale style={styles.backBtn} onPress={() => setAiCheckVisible(false)}>
+              <Text style={styles.backArrow}>←</Text>
+            </PressableScale>
+            <Text style={styles.topTitle}>ChorePal Photo Check</Text>
+            <View style={styles.backBtnSpacer} />
+          </View>
+
+          <View style={styles.modalContent}>
+            {/* The whole box toggles, not just the small switch */}
+            <Pressable
+              style={({ pressed }) => [styles.notificationSetting, pressed && { opacity: 0.7 }]}
+              onPress={() => !savingSkipAi && handleSkipAiToggle(!skipAi)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: !skipAi, disabled: savingSkipAi }}
+              accessibilityLabel="Check photos with AI">
+              <View style={styles.notificationTextContainer}>
+                <Text style={styles.notificationTitle}>Check photos with AI</Text>
+                <Text style={styles.notificationDescription}>
+                  When on, ChorePal's AI looks at each chore photo first and tells you if the chore
+                  looks done. When off, every photo comes straight to you to approve or reject.
+                </Text>
+              </View>
+              <Switch
+                value={!skipAi}
+                onValueChange={(on) => handleSkipAiToggle(!on)}
+                disabled={savingSkipAi}
+                trackColor={{ false: '#D5DEDC', true: '#4ECDC4' }}
+              />
+            </Pressable>
+
+            <Text style={styles.notificationNote}>
+              This applies to all of your children. You always make the final decision either way.
+            </Text>
           </View>
         </SafeAreaView>
       </Modal>

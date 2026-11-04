@@ -1,9 +1,10 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Pressable,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text,
@@ -11,12 +12,18 @@ import {
 } from 'react-native';
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
+import { clearChoreHistory, deleteChoreEverywhere, deleteChoreGroup, deleteOverdueChores, migrateLegacyAllChores } from '../utils/choreModel';
+import { describeRepeat, isDueOn, isPastDue, isRecurring, statusFor, todayStr } from '../utils/choreSchedule';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  pending: { label: 'Pending', color: '#F4B942', bg: '#FFF8E1' },
-  submitted: { label: 'Submitted', color: '#4ECDC4', bg: '#F0FFFE' },
+  // todo = nothing submitted yet. submitted = a photo is waiting for the parent to review.
+  todo: { label: 'To do', color: '#6B7C79', bg: '#EEF2F1' },
+  submitted: { label: 'Waiting for review', color: '#B7791F', bg: '#FFF8E1' },
   approved: { label: 'Approved', color: '#66BB6A', bg: '#E8F5E9' },
   rejected: { label: 'Rejected', color: '#E63946', bg: '#FFEBEE' },
+  overdue: { label: 'Overdue', color: '#FFFFFF', bg: '#E63946' },
+  // recurring chore that isn't scheduled today
+  off: { label: 'Not today', color: '#6B7C79', bg: '#F4F7F6' },
 };
 
 const PRIORITY_CONFIG: Record<string, { color: string }> = {
@@ -36,15 +43,16 @@ const formatDeadline = (deadline?: string) => {
 
 export default function ChoreListScreen() {
   const router = useRouter();
-  const [expandedChild, setExpandedChild] = useState<string | null>(null);
+  // Every child starts open. Tap a child's header to collapse or reopen their chores.
+  const [collapsed, setCollapsed] = useState<string[]>([]);
   const [childrenWithChores, setChildrenWithChores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       const loadData = async () => {
         try {
-          setLoading(true);
           const user = auth.currentUser;
           if (!user) return;
 
@@ -54,10 +62,19 @@ export default function ChoreListScreen() {
             where('parentId', '==', user.uid)
           );
           const childrenSnap = await getDocs(childrenQuery);
-          const children: any[] = childrenSnap.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+          const children: any[] = childrenSnap.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }))
+            .filter((c: any) => c.isDeleted !== true);
+
+          // Old shared "all children" chores become one chore per child
+          try {
+            await migrateLegacyAllChores(user.uid, children);
+          } catch (e) {
+            console.log('Chore migration skipped:', e);
+          }
 
           // Load all chores for this parent
           const choresQuery = query(
@@ -83,19 +100,19 @@ export default function ChoreListScreen() {
 
           // Group chores by child
           const grouped = children.map(child => {
-            // Get chores assigned to this child or all children
-            const childChores = allChores.filter(chore =>
-              chore.assignedTo === 'all' || chore.assignedTo === child.id
-            );
+            // Only this child's own chores
+            const childChores = allChores.filter(chore => chore.assignedTo === child.id);
 
-            // Map chore status from submissions
+            // Status from this child's submissions. Recurring chores: today's only.
+            const today = todayStr();
+            const childSubs = submissions.filter(s => s.childId === child.id);
             const choresWithStatus = childChores.map(chore => {
-              const submission = submissions.find(
-                s => s.choreId === chore.id && s.childId === child.id
-              );
+              let status: string = statusFor(chore, childSubs, today);
+              if (isRecurring(chore) && status === 'todo' && !isDueOn(chore, today)) status = 'off';
+              if (isPastDue(chore, today) && (status === 'todo' || status === 'rejected')) status = 'overdue';
               return {
                 ...chore,
-                status: submission?.status || 'pending',
+                status,
                 deadline: chore.deadline || 'No deadline',
               };
             });
@@ -109,10 +126,6 @@ export default function ChoreListScreen() {
           });
 
           setChildrenWithChores(grouped);
-          // Auto expand first child
-          if (grouped.length > 0) {
-            setExpandedChild(prev => prev ?? grouped[0].childId);
-          }
         } catch (error) {
           console.error('Error loading chores:', error);
         } finally {
@@ -120,40 +133,105 @@ export default function ChoreListScreen() {
         }
       };
       loadData();
-    }, [])
+    }, [reloadKey])
   );
 
-  const handleDeleteChore = async (choreId: string, choreTitle: string, childName: string) => {
+  const removeLocally = (ids: string[]) =>
+    setChildrenWithChores(prev => prev.map(child => ({
+      ...child,
+      chores: child.chores.filter((c: any) => !ids.includes(c.id))
+    })));
+
+  const handleDeleteChore = async (chore: any, scope: 'one' | 'group') => {
+    const user = auth.currentUser;
+    if (!user) return;
     try {
-      await deleteDoc(doc(db, 'chores', choreId));
-      // Update local state
-      setChildrenWithChores(prev => prev.map(child => ({
-        ...child,
-        chores: child.chores.filter((c: any) => c.id !== choreId)
-      })));
-      Alert.alert('Deleted!', `"${choreTitle}" has been deleted.`);
+      if (scope === 'group' && chore.groupId) {
+        const ids = childrenWithChores.flatMap(c => c.chores).filter((c: any) => c.groupId === chore.groupId).map((c: any) => c.id);
+        await deleteChoreGroup(chore.groupId, user.uid);
+        removeLocally(ids);
+      } else {
+        await deleteChoreEverywhere(chore.id, user.uid);
+        removeLocally([chore.id]);
+      }
+      Alert.alert('Deleted!', `"${chore.title}" has been deleted.`);
     } catch (error: any) {
       Alert.alert('Error!', error.message);
     }
   };
 
   const handleEditChore = (chore: any, childName: string) => {
+    const groupCount = chore.groupId
+      ? childrenWithChores.flatMap(c => c.chores).filter((c: any) => c.groupId === chore.groupId).length
+      : 1;
+    const askDelete = () => {
+      if (groupCount > 1) {
+        // Android shows at most 3 buttons, so the delete choice gets its own prompt
+        Alert.alert('Delete chore', `"${chore.title}" was given to ${groupCount} children.`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: `Only ${childName}`, style: 'destructive', onPress: () => handleDeleteChore(chore, 'one') },
+          { text: 'All children', style: 'destructive', onPress: () => handleDeleteChore(chore, 'group') },
+        ]);
+      } else {
+        handleDeleteChore(chore, 'one');
+      }
+    };
+    Alert.alert('Edit Chore', `What would you like to do with "${chore.title}" for ${childName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: '✏️ Edit',
+        onPress: () => router.push({ pathname: '/create-chore', params: { id: chore.id } })
+      },
+      { text: '🗑️ Delete', style: 'destructive', onPress: askDelete },
+    ]);
+  };
+
+  const handleDeleteOverdue = () => {
     Alert.alert(
-      'Edit Chore',
-      chore.assignedTo === 'all'
-        ? `What would you like to do with "${chore.title}"? It is assigned to all children.`
-        : `What would you like to do with "${chore.title}" for ${childName}?`,
+      'Delete overdue chores?',
+      `This permanently deletes ${overdueCount} one-time chore${overdueCount === 1 ? '' : 's'} whose day has passed without being done. Recurring chores are never deleted.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: '✏️ Edit',
-          onPress: () => router.push({ pathname: '/create-chore', params: { id: chore.id } })
-        },
-        {
-          text: '🗑️ Delete',
+          text: 'Delete overdue',
           style: 'destructive',
-          onPress: () => handleDeleteChore(chore.id, chore.title, childName)
-        }
+          onPress: async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+              const n = await deleteOverdueChores(user.uid);
+              setReloadKey(k => k + 1);
+              Alert.alert('Done', n === 0 ? 'There were no overdue chores.' : `Deleted ${n} overdue chore${n === 1 ? '' : 's'}.`);
+            } catch (error: any) {
+              Alert.alert('Error!', error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearHistory = () => {
+    Alert.alert(
+      'Delete chore history?',
+      'This permanently deletes chores that were already approved, along with their photos and records. Chores still to do or waiting for review are kept.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete history',
+          style: 'destructive',
+          onPress: async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+              const n = await clearChoreHistory(user.uid);
+              setReloadKey(k => k + 1);
+              Alert.alert('Done', n === 0 ? 'There was no history to delete.' : `Deleted ${n} finished chore${n === 1 ? '' : 's'}.`);
+            } catch (error: any) {
+              Alert.alert('Error!', error.message);
+            }
+          },
+        },
       ]
     );
   };
@@ -163,6 +241,8 @@ export default function ChoreListScreen() {
     sum + child.chores.filter((c: any) => c.status === 'approved').length, 0);
   const pendingReview = childrenWithChores.reduce((sum, child) =>
     sum + child.chores.filter((c: any) => c.status === 'submitted').length, 0);
+  const overdueCount = childrenWithChores.reduce((sum, child) =>
+    sum + child.chores.filter((c: any) => c.status === 'overdue').length, 0);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -186,7 +266,7 @@ export default function ChoreListScreen() {
           <Text style={styles.loadingText}>Loading chores...</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
@@ -220,8 +300,10 @@ export default function ChoreListScreen() {
                   style={styles.childHeader}
                   accessibilityRole="button"
                   accessibilityLabel={`Toggle chores for ${child.childName}`}
-                  onPress={() => setExpandedChild(
-                    expandedChild === child.childId ? null : child.childId
+                  onPress={() => setCollapsed(prev =>
+                    prev.includes(child.childId)
+                      ? prev.filter(id => id !== child.childId)
+                      : [...prev, child.childId]
                   )}>
                   <View style={styles.childLeft}>
                     <View style={styles.childAvatarCircle}>
@@ -233,18 +315,18 @@ export default function ChoreListScreen() {
                     </View>
                   </View>
                   <Text style={styles.expandArrow}>
-                    {expandedChild === child.childId ? '▼' : '›'}
+                    {collapsed.includes(child.childId) ? '›' : '▼'}
                   </Text>
                 </PressableScale>
 
                 {/* Chores List */}
-                {expandedChild === child.childId && (
+                {!collapsed.includes(child.childId) && (
                   <View style={styles.choresList}>
                     {child.chores.length === 0 ? (
                       <Text style={styles.noChoresText}>No chores assigned yet!</Text>
                     ) : (
                       child.chores.map((chore: any) => {
-                        const status = STATUS_CONFIG[chore.status] || STATUS_CONFIG['pending'];
+                        const status = STATUS_CONFIG[chore.status] || STATUS_CONFIG['todo'];
                         const priority = PRIORITY_CONFIG[chore.priority] || PRIORITY_CONFIG['medium'];
                         return (
                           <PressableScale
@@ -268,9 +350,12 @@ export default function ChoreListScreen() {
                               </View>
                               <View style={styles.choreBottom}>
                                 <Text style={styles.choreCoins}>🪙 {chore.coins} coins</Text>
-                                <Text style={styles.choreDeadline}>📅 {formatDeadline(chore.deadline)}</Text>
-                                {chore.repeatable && (
-                                  <Text style={styles.choreRepeatable}>🔄 Recurring</Text>
+                                {isRecurring(chore) ? (
+                                  <Text style={styles.choreRepeatable}>🔄 {describeRepeat(chore)}</Text>
+                                ) : (
+                                  <Text style={[styles.choreDeadline, chore.status === 'overdue' && { color: '#E63946' }]}>
+                                    📅 {formatDeadline(chore.deadline)}
+                                  </Text>
                                 )}
                               </View>
                             </View>
@@ -293,6 +378,28 @@ export default function ChoreListScreen() {
 
               </View>
             ))
+          )}
+
+          {/* Plain Pressable on purpose: PressableScale wraps its content in a view that
+              grows (flexGrow: 1), which inside a ScrollView can swallow the space below it. */}
+          {overdueCount > 0 && (
+            <Pressable
+              style={styles.clearHistoryBtn}
+              onPress={handleDeleteOverdue}
+              accessibilityRole="button"
+              accessibilityLabel="Delete overdue chores">
+              <Text style={styles.clearHistoryText}>⏰ Delete {overdueCount} overdue chore{overdueCount === 1 ? '' : 's'}</Text>
+            </Pressable>
+          )}
+
+          {approvedChores > 0 && (
+            <Pressable
+              style={styles.clearHistoryBtn}
+              onPress={handleClearHistory}
+              accessibilityRole="button"
+              accessibilityLabel="Delete chore history">
+              <Text style={styles.clearHistoryText}>🗑️ Delete finished chores</Text>
+            </Pressable>
           )}
 
         </ScrollView>
@@ -367,13 +474,11 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 14, color: '#6B7C79', textAlign: 'center' },
   childSection: {
     marginBottom: 16, borderRadius: 22, borderWidth: 1.5, borderColor: '#DDF1EE',
-    backgroundColor: '#FFFFFF', overflow: 'hidden', shadowColor: '#0F7F76',
-    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10,
-    elevation: 2,
+    backgroundColor: '#FFFFFF',
   },
   childHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, backgroundColor: '#E6F8F6',
+    padding: 16, backgroundColor: '#E6F8F6', borderRadius: 20,
   },
   childLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   childAvatarCircle: {
@@ -413,6 +518,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center',
     borderStyle: 'dashed', backgroundColor: '#F0FFFE',
   },
+  clearHistoryBtn: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 },
+  clearHistoryText: { color: '#E63946', fontWeight: '700', fontSize: 13 },
   addChoreBtnText: { color: '#0F7F76', fontWeight: '800', fontSize: 14 },
   bottomNav: {
     flexDirection: 'row', position: 'absolute', bottom: 0, left: 0, right: 0,
