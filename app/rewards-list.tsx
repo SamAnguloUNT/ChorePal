@@ -1,9 +1,12 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, getDocs, query, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, getDocs, onSnapshot, updateDoc, query, where } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Alert,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -16,9 +19,57 @@ import { auth, db } from '../config/firebase';
 export default function RewardsListScreen() {
   const router = useRouter();
   const [rewards, setRewards] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [filter, setFilter] = useState<'all' | 'available' | 'redeemed'>('all');
   const [loading, setLoading] = useState(true);
   const [children, setChildren] = useState<any[]>([]);
+
+  // Expo Router can keep this screen mounted behind child screens.
+  // Subscribe only while focused and recheck the active session before alerting.
+  useFocusEffect(useCallback(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    const key = `reward-notifications:${user.uid}`;
+    const isCurrentParent = () => !cancelled && auth.currentUser?.uid === user.uid;
+
+    const start = async () => {
+      const [stored, childSession] = await Promise.all([
+        AsyncStorage.getItem(key), AsyncStorage.getItem('childSession'),
+      ]);
+      if (!isCurrentParent() || childSession) return;
+      let saved: string[] = [];
+      try {
+        const parsed = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(parsed)) saved = parsed.filter(id => typeof id === 'string');
+      } catch { /* Reset invalid notification history. */ }
+      const seen = new Set<string>(saved);
+      let baseline = stored === null;
+      unsubscribe = onSnapshot(
+        query(collection(db, 'purchases'), where('parentId', '==', user.uid)),
+        snap => {
+          if (!isCurrentParent()) return;
+          const fresh = snap.docs.filter(item => !seen.has(item.id));
+          snap.docs.forEach(item => seen.add(item.id));
+          AsyncStorage.setItem(key, JSON.stringify([...seen])).catch(console.error);
+          const shouldNotify = !baseline && fresh.length > 0;
+          baseline = false;
+          setPurchases(snap.docs.map(item => ({ ...item.data(), id: item.id })));
+          if (shouldNotify) {
+            AsyncStorage.getItem('childSession').then(activeChild => {
+              if (!isCurrentParent() || activeChild || AppState.currentState !== 'active') return;
+              setNotifications(previous => [...previous, ...fresh.map(item => ({ ...item.data(), id: item.id }))]);
+            }).catch(console.error);
+          }
+        },
+        error => console.error('Reward notification error:', error),
+      );
+    };
+    start().catch(console.error);
+    return () => { cancelled = true; unsubscribe?.(); setNotifications([]); };
+  }, []));
 
   useFocusEffect(
     useCallback(() => {
@@ -53,7 +104,7 @@ export default function RewardsListScreen() {
             where('parentId', '==', user.uid)
           );
           const purchasesSnap = await getDocs(purchasesQuery);
-          const purchasedRewardIds = purchasesSnap.docs.map((d) => d.data().rewardId);
+          setPurchases(purchasesSnap.docs.map(d => ({ ...d.data(), id: d.id })));
 
           const rewardsData = rewardsSnap.docs.map((doc) => {
             const data = doc.data();
@@ -66,7 +117,7 @@ export default function RewardsListScreen() {
             return {
               id: doc.id,
               ...data,
-              redeemed: purchasedRewardIds.includes(doc.id),
+
               availableToLabel,
             };
           });
@@ -82,27 +133,60 @@ export default function RewardsListScreen() {
     }, [])
   );
 
-  const filteredRewards = rewards.filter((r) => {
-    if (filter === 'available') return !r.redeemed;
-    if (filter === 'redeemed') return r.redeemed;
-    return true;
+  // Redemption belongs to a reward + child pair, never the reward alone.
+  const activeRows = rewards.flatMap(reward => {
+    const eligible = reward.availableTo === 'all'
+      ? children : children.filter(child => child.id === reward.availableTo);
+    return eligible.filter(child => !(reward.excludedChildIds || []).includes(child.id) && (reward.repeatable === true || !purchases.some(
+      purchase => purchase.rewardId === reward.id && purchase.childId === child.id
+    ))).map(child => ({ ...reward, assignedChildId: child.id, rowKey: `${reward.id}:${child.id}`,
+      redeemed: false, availableToLabel: child.name || 'Your child' }));
   });
+  const redeemedRows = purchases.filter(purchase => !purchase.hiddenFromParent).map(purchase => {
+    const reward = rewards.find(item => item.id === purchase.rewardId);
+    const child = children.find(item => item.id === purchase.childId);
+    return { ...reward, ...purchase, id: purchase.rewardId, purchaseId: purchase.id,
+      rowKey: `purchase:${purchase.id}`, title: purchase.rewardTitle || reward?.title || 'Reward',
+      emoji: reward?.emoji || '🎁', redeemed: true,
+      availableToLabel: purchase.childName || child?.name || 'Your child' };
+  });
+  const availableRewards = activeRows.length;
+  const redeemedRewards = redeemedRows.length;
+  const totalRewards = availableRewards;
+  const filteredRewards = filter === 'redeemed' ? redeemedRows : activeRows;
+  const notification = notifications[0];
+  const notificationChild = notification && (notification.childName || children.find(child => child.id === notification.childId)?.name || 'Your child');
+  const closeNotification = () => setNotifications(previous => previous.slice(1));
 
-  const totalRewards = rewards.length;
-  const availableRewards = rewards.filter((r) => !r.redeemed).length;
-  const redeemedRewards = rewards.filter((r) => r.redeemed).length;
-
-  const handleDeleteReward = async (rewardId: string, rewardTitle: string) => {
+  const handleDeleteReward = async (reward: any) => {
+    if (!reward.assignedChildId) return;
     try {
-      await deleteDoc(doc(db, 'rewards', rewardId));
-      setRewards((prev) => prev.filter((r) => r.id !== rewardId));
-      Alert.alert('Deleted!', `"${rewardTitle}" has been deleted.`);
+      // Persist removal for this child without deleting the shared reward document.
+      await updateDoc(doc(db, 'rewards', reward.id), {
+        excludedChildIds: arrayUnion(reward.assignedChildId),
+      });
+      setRewards(previous => previous.map(item => item.id === reward.id
+        ? { ...item, excludedChildIds: [...new Set([...(item.excludedChildIds || []), reward.assignedChildId])] }
+        : item));
+      Alert.alert('Reward removed', `"${reward.title}" was removed for ${reward.availableToLabel}.`);
     } catch (error: any) {
-      Alert.alert('Error!', error.message);
+      Alert.alert('Could not remove reward', error.message);
     }
   };
 
   const handleEditReward = (reward: any) => {
+    if (reward.purchaseId) {
+      Alert.alert('Clear redeemed reward?', `Remove ${reward.availableToLabel}'s redemption from this history? Coins and reward availability stay unchanged.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', onPress: async () => {
+          try {
+            await updateDoc(doc(db, 'purchases', reward.purchaseId), { hiddenFromParent: true });
+            setPurchases(previous => previous.map(item => item.id === reward.purchaseId ? { ...item, hiddenFromParent: true } : item));
+          } catch (error: any) { Alert.alert('Could not clear reward', error.message); }
+        } },
+      ]);
+      return;
+    }
     Alert.alert(
       'Manage Reward',
       `What would you like to do with "${reward.title}"?`,
@@ -119,13 +203,13 @@ export default function RewardsListScreen() {
           onPress: () => {
             Alert.alert(
               'Delete Reward?',
-              `Are you sure you want to delete "${reward.title}"?`,
+              `Remove "${reward.title}" for ${reward.availableToLabel} only? It will stay available for the other children.`,
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Delete',
                   style: 'destructive',
-                  onPress: () => handleDeleteReward(reward.id, reward.title),
+                  onPress: () => handleDeleteReward(reward),
                 },
               ]
             );
@@ -221,7 +305,7 @@ export default function RewardsListScreen() {
             <View style={styles.rewardsList}>
               {filteredRewards.map((reward) => (
                 <PressableScale
-                  key={reward.id}
+                  key={reward.rowKey}
                   style={[
                     styles.rewardCard,
                     reward.redeemed && styles.rewardCardRedeemed,
@@ -260,7 +344,7 @@ export default function RewardsListScreen() {
                               : styles.statusTextAvailable,
                           ]}
                         >
-                          {reward.redeemed ? 'Redeemed' : 'Available'}
+                          {reward.redeemed ? 'Redeemed' : reward.repeatable ? 'Repeatable' : 'Available'}
                         </Text>
                       </View>
                     </View>
@@ -283,6 +367,30 @@ export default function RewardsListScreen() {
           )}
         </ScrollView>
       )}
+
+      <Modal visible={!!notification} transparent animationType="fade" onRequestClose={closeNotification}>
+        <View style={styles.notificationOverlay}>
+          <View style={styles.notificationCard} accessibilityViewIsModal>
+            <PressableScale style={styles.notificationX} onPress={closeNotification} accessibilityRole="button" accessibilityLabel="Close notification">
+              <Text style={{ fontSize: 30, color: '#71817E' }}>×</Text>
+            </PressableScale>
+            <ScrollView contentContainerStyle={{ alignItems: 'center', paddingTop: 24 }}>
+              <Text style={{ fontSize: 46, marginBottom: 14 }}>🎁</Text>
+              <Text style={styles.notificationTitle}>Reward Redeemed</Text>
+              <Text style={styles.notificationCost}>{notification?.coinCost || 0} coins</Text>
+              <View style={{ alignSelf: 'stretch', marginVertical: 20 }}>
+                <Text style={styles.notificationLabel}>REDEEMED BY</Text>
+                <View style={styles.notificationDetail}><Text style={styles.notificationDetailText}>{notificationChild}</Text></View>
+                <Text style={styles.notificationLabel}>REWARD</Text>
+                <View style={styles.notificationDetail}><Text style={styles.notificationDetailText}>{notification?.rewardTitle || 'Reward'}</Text></View>
+              </View>
+              <PressableScale style={styles.notificationClose} onPress={closeNotification} accessibilityRole="button" accessibilityLabel="Close notification">
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFFFFF' }}>Close</Text>
+              </PressableScale>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Bottom Nav — matches parent dashboard */}
       <View style={styles.bottomNav}>
@@ -317,6 +425,15 @@ export default function RewardsListScreen() {
 }
 
 const styles = StyleSheet.create({
+  notificationOverlay: { flex: 1, backgroundColor: 'rgba(28,46,43,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  notificationCard: { width: '100%', maxWidth: 440, maxHeight: '90%', backgroundColor: '#FFFFFF', borderRadius: 30, padding: 24 },
+  notificationX: { position: 'absolute', top: 8, right: 12, padding: 8, zIndex: 1 },
+  notificationTitle: { color: '#1F2D2B', fontSize: 26, fontWeight: '900', textAlign: 'center' },
+  notificationCost: { color: '#0F7F76', fontSize: 32, fontWeight: '900', marginTop: 16 },
+  notificationLabel: { color: '#71817E', fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 8 },
+  notificationDetail: { borderRadius: 16, padding: 15, backgroundColor: '#E8F8F5', borderWidth: 1, borderColor: '#CEEDE7', marginBottom: 16 },
+  notificationDetailText: { color: '#1F2D2B', fontSize: 18 },
+  notificationClose: { alignSelf: 'stretch', alignItems: 'center', padding: 17, borderRadius: 16, backgroundColor: '#4BC8C0', marginTop: 22, marginBottom: 4 },
   container: {
     flex: 1,
     backgroundColor: '#F3FBF9',

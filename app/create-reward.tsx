@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,7 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
+  Pressable,
   View,
 } from 'react-native';
 import PressableScale from '../components/PressableScale';
@@ -103,6 +104,7 @@ export default function CreateRewardScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const descriptionY = useRef(0);
 
+  const [repeatable, setRepeatable] = useState(false);
   const [title, setTitle] = useState('');
   const [coins, setCoins] = useState('');
   const [description, setDescription] = useState('');
@@ -147,6 +149,7 @@ export default function CreateRewardScreen() {
           return;
         }
         const d: any = snap.data();
+        setRepeatable(d.repeatable === true);
         setTitle(d.title ?? '');
         setCoins(d.coinCost !== undefined && d.coinCost !== null ? String(d.coinCost) : '');
         setDescription(d.description ?? '');
@@ -227,6 +230,7 @@ export default function CreateRewardScreen() {
       }
 
       const rewardData = {
+        repeatable,
         title: title.trim(),
         emoji: selectedEmoji,
         coinCost: coinsNum,
@@ -328,10 +332,17 @@ export default function CreateRewardScreen() {
               <Text style={styles.backText}>‹ Back</Text>
             </PressableScale>
           </View>
-          <Text style={styles.pageTitle}>{isEdit ? 'Edit Reward' : 'New Reward'}</Text>
-          <Text style={styles.pageSubtitle}>
-            {isEdit ? 'Update the details below and save your changes.' : 'Set up a reward your children can redeem with coins.'}
-          </Text>
+          <View style={styles.headingCard}>
+            <View style={styles.headingIconBox}>
+              <Text style={styles.headingIcon} accessibilityElementsHidden importantForAccessibility="no">🎁</Text>
+            </View>
+            <View style={styles.headingCopy}>
+              <Text style={styles.pageTitle} accessibilityRole="header">{isEdit ? 'Edit Reward' : 'Create Reward'}</Text>
+              <Text style={styles.pageSubtitle}>
+                {isEdit ? 'Update the details below and save your changes.' : 'Create rewards your children can redeem with coins.'}
+              </Text>
+            </View>
+          </View>
 
           {/* Preview */}
           <AnimatedEntry index={0} skip={reduceMotion}>
@@ -407,7 +418,7 @@ export default function CreateRewardScreen() {
                 ))}
                 <PressableScale
                   style={styles.emojiMore}
-                  onPress={() => setEmojiModalVisible(true)}
+                  onPress={() => { Keyboard.dismiss(); setEmojiModalVisible(true); }}
                   accessibilityRole="button"
                   accessibilityLabel="More icons">
                   <Text style={styles.emojiMoreText}>More</Text>
@@ -450,6 +461,10 @@ export default function CreateRewardScreen() {
           <AnimatedEntry index={4} skip={reduceMotion}>
             <View style={styles.card}>
               <SectionHeader title="Coin cost" />
+              <PressableScale onPress={() => setRepeatable(value => !value)} accessibilityRole="checkbox" accessibilityState={{ checked: repeatable }}>
+                <Text style={{ color: '#24675F', paddingVertical: 12, fontWeight: '700' }}>{repeatable ? '☑' : '☐'} Repeatable reward</Text>
+                <Text>Allow children to redeem this reward more than once.</Text>
+              </PressableScale>
               <View style={styles.coinsRow}>
                 <PressableScale style={styles.stepBtn} onPress={() => changeCoins(-5)} pressedScale={0.94} accessibilityRole="button" accessibilityLabel="Decrease by 5 coins">
                   <Text style={styles.stepBtnText}>−5</Text>
@@ -571,10 +586,14 @@ export default function CreateRewardScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setEmojiModalVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => setEmojiModalVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.modalCard}>
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setEmojiModalVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close icon picker"
+          />
+          <View style={styles.modalCard} accessibilityViewIsModal>
                 <View style={styles.modalHandle} />
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Choose an icon</Text>
@@ -582,7 +601,13 @@ export default function CreateRewardScreen() {
                     <Text style={styles.closeText}>Done</Text>
                   </PressableScale>
                 </View>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={styles.iconScroll}
+                  contentContainerStyle={styles.iconScrollContent}
+                  showsVerticalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                  directionalLockEnabled>
                   {EMOJI_GROUPS.map(group => (
                     <View key={group.label} style={styles.emojiGroup}>
                       <Text style={styles.emojiGroupLabel}>{group.label.toUpperCase()}</Text>
@@ -604,10 +629,8 @@ export default function CreateRewardScreen() {
                     </View>
                   ))}
                 </ScrollView>
-              </View>
-            </TouchableWithoutFeedback>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -633,8 +656,21 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   backBtn: { paddingVertical: 12, paddingRight: 12 },
   backText: { fontSize: 15, color: '#127E78', fontWeight: '700' },
-  pageTitle: { fontSize: 26, fontWeight: '800', color: HEADING },
-  pageSubtitle: { fontSize: 14, color: MUTED, marginTop: 5, marginBottom: 24, lineHeight: 20 },
+  headingCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    backgroundColor: '#3E8581', borderRadius: 28,
+    paddingHorizontal: 20, paddingVertical: 26, marginBottom: 24,
+    shadowColor: '#266D68', shadowOpacity: 0.10, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 }, elevation: 2,
+  },
+  headingIconBox: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: '#E7F7F5', alignItems: 'center', justifyContent: 'center',
+  },
+  headingIcon: { fontSize: 34 },
+  headingCopy: { flex: 1, minWidth: 0 },
+  pageTitle: { fontSize: 28, fontWeight: '800', color: '#FFFFFF' },
+  pageSubtitle: { fontSize: 15, color: '#D9EFED', marginTop: 8, lineHeight: 22 },
 
   // Preview
   sectionCaption: { fontSize: 12, fontWeight: '700', color: MUTED, letterSpacing: 0.8, marginBottom: 9 },
@@ -846,8 +882,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 20,
     paddingBottom: 36,
-    maxHeight: '75%',
+    height: '75%',
   },
+  iconScroll: { flex: 1, minHeight: 0 },
+  iconScrollContent: { paddingBottom: 24 },
   modalHandle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: BORDER, marginBottom: 14 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: INK },
