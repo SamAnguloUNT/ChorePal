@@ -11,12 +11,12 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  Pressable,
   View,
 } from 'react-native';
 import PressableScale from '../components/PressableScale';
@@ -461,10 +461,6 @@ export default function CreateRewardScreen() {
           <AnimatedEntry index={4} skip={reduceMotion}>
             <View style={styles.card}>
               <SectionHeader title="Coin cost" />
-              <PressableScale onPress={() => setRepeatable(value => !value)} accessibilityRole="checkbox" accessibilityState={{ checked: repeatable }}>
-                <Text style={{ color: '#24675F', paddingVertical: 12, fontWeight: '700' }}>{repeatable ? '☑' : '☐'} Repeatable reward</Text>
-                <Text>Allow children to redeem this reward more than once.</Text>
-              </PressableScale>
               <View style={styles.coinsRow}>
                 <PressableScale style={styles.stepBtn} onPress={() => changeCoins(-5)} pressedScale={0.94} accessibilityRole="button" accessibilityLabel="Decrease by 5 coins">
                   <Text style={styles.stepBtnText}>−5</Text>
@@ -504,8 +500,29 @@ export default function CreateRewardScreen() {
             </View>
           </AnimatedEntry>
 
-          {/* Availability */}
+          {/* Repeatable: its own card, the whole row is tappable */}
           <AnimatedEntry index={5} skip={reduceMotion}>
+            <Pressable
+              style={({ pressed }) => [styles.card, styles.repeatRow, repeatable && styles.repeatRowOn, pressed && { opacity: 0.85 }]}
+              onPress={() => setRepeatable(value => !value)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: repeatable }}
+              accessibilityLabel="Repeatable reward">
+              <View style={styles.repeatIcon}>
+                <Text style={{ fontSize: 22 }}>🔁</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.repeatTitle}>Repeatable reward</Text>
+                <Text style={styles.repeatHint}>Children can redeem this reward more than once.</Text>
+              </View>
+              <View style={[styles.repeatCheck, repeatable && styles.repeatCheckOn]}>
+                {repeatable && <Text style={styles.repeatCheckMark}>✓</Text>}
+              </View>
+            </Pressable>
+          </AnimatedEntry>
+
+          {/* Availability */}
+          <AnimatedEntry index={6} skip={reduceMotion}>
             <View style={styles.card}>
               <SectionHeader title="Available to" />
               <View style={styles.toggleRow}>
@@ -813,6 +830,22 @@ const styles = StyleSheet.create({
   presetChipActive: { backgroundColor: TEAL, borderColor: TEAL },
   presetText: { fontSize: 13, fontWeight: '700', color: MUTED },
   presetTextActive: { color: '#FFFFFF' },
+
+  // Repeatable row
+  repeatRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  repeatRowOn: { borderColor: '#11A79B', backgroundColor: TEAL_SOFT },
+  repeatIcon: {
+    width: 44, height: 44, borderRadius: 14, backgroundColor: TOGGLE_BG,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  repeatTitle: { fontSize: 15, fontWeight: "800", color: INK },
+  repeatHint: { fontSize: 13, color: MUTED, marginTop: 3, lineHeight: 18 },
+  repeatCheck: {
+    width: 28, height: 28, borderRadius: 9, borderWidth: 2, borderColor: BORDER,
+    backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center',
+  },
+  repeatCheckOn: { backgroundColor: TEAL, borderColor: TEAL },
+  repeatCheckMark: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
 
   // Availability
   toggleRow: { flexDirection: 'row', backgroundColor: TOGGLE_BG, borderRadius: 14, padding: 4, gap: 4 },
