@@ -7,15 +7,16 @@ import {
   Alert,
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import PressableScale from '../components/PressableScale';
@@ -103,6 +104,7 @@ export default function CreateRewardScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const descriptionY = useRef(0);
 
+  const [repeatable, setRepeatable] = useState(false);
   const [title, setTitle] = useState('');
   const [coins, setCoins] = useState('');
   const [description, setDescription] = useState('');
@@ -147,6 +149,7 @@ export default function CreateRewardScreen() {
           return;
         }
         const d: any = snap.data();
+        setRepeatable(d.repeatable === true);
         setTitle(d.title ?? '');
         setCoins(d.coinCost !== undefined && d.coinCost !== null ? String(d.coinCost) : '');
         setDescription(d.description ?? '');
@@ -227,6 +230,7 @@ export default function CreateRewardScreen() {
       }
 
       const rewardData = {
+        repeatable,
         title: title.trim(),
         emoji: selectedEmoji,
         coinCost: coinsNum,
@@ -328,10 +332,17 @@ export default function CreateRewardScreen() {
               <Text style={styles.backText}>‹ Back</Text>
             </PressableScale>
           </View>
-          <Text style={styles.pageTitle}>{isEdit ? 'Edit Reward' : 'New Reward'}</Text>
-          <Text style={styles.pageSubtitle}>
-            {isEdit ? 'Update the details below and save your changes.' : 'Set up a reward your children can redeem with coins.'}
-          </Text>
+          <View style={styles.headingCard}>
+            <View style={styles.headingIconBox}>
+              <Text style={styles.headingIcon} accessibilityElementsHidden importantForAccessibility="no">🎁</Text>
+            </View>
+            <View style={styles.headingCopy}>
+              <Text style={styles.pageTitle} accessibilityRole="header">{isEdit ? 'Edit Reward' : 'Create Reward'}</Text>
+              <Text style={styles.pageSubtitle}>
+                {isEdit ? 'Update the details below and save your changes.' : 'Create rewards your children can redeem with coins.'}
+              </Text>
+            </View>
+          </View>
 
           {/* Preview */}
           <AnimatedEntry index={0} skip={reduceMotion}>
@@ -407,7 +418,7 @@ export default function CreateRewardScreen() {
                 ))}
                 <PressableScale
                   style={styles.emojiMore}
-                  onPress={() => setEmojiModalVisible(true)}
+                  onPress={() => { Keyboard.dismiss(); setEmojiModalVisible(true); }}
                   accessibilityRole="button"
                   accessibilityLabel="More icons">
                   <Text style={styles.emojiMoreText}>More</Text>
@@ -489,8 +500,29 @@ export default function CreateRewardScreen() {
             </View>
           </AnimatedEntry>
 
-          {/* Availability */}
+          {/* Repeatable: its own card, the whole row is tappable */}
           <AnimatedEntry index={5} skip={reduceMotion}>
+            <Pressable
+              style={({ pressed }) => [styles.card, styles.repeatRow, repeatable && styles.repeatRowOn, pressed && { opacity: 0.85 }]}
+              onPress={() => setRepeatable(value => !value)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: repeatable }}
+              accessibilityLabel="Repeatable reward">
+              <View style={styles.repeatIcon}>
+                <Text style={{ fontSize: 22 }}>🔁</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.repeatTitle}>Repeatable reward</Text>
+                <Text style={styles.repeatHint}>Children can redeem this reward more than once.</Text>
+              </View>
+              <View style={[styles.repeatCheck, repeatable && styles.repeatCheckOn]}>
+                {repeatable && <Text style={styles.repeatCheckMark}>✓</Text>}
+              </View>
+            </Pressable>
+          </AnimatedEntry>
+
+          {/* Availability */}
+          <AnimatedEntry index={6} skip={reduceMotion}>
             <View style={styles.card}>
               <SectionHeader title="Available to" />
               <View style={styles.toggleRow}>
@@ -571,10 +603,14 @@ export default function CreateRewardScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setEmojiModalVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => setEmojiModalVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.modalCard}>
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setEmojiModalVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close icon picker"
+          />
+          <View style={styles.modalCard} accessibilityViewIsModal>
                 <View style={styles.modalHandle} />
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Choose an icon</Text>
@@ -582,7 +618,13 @@ export default function CreateRewardScreen() {
                     <Text style={styles.closeText}>Done</Text>
                   </PressableScale>
                 </View>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  style={styles.iconScroll}
+                  contentContainerStyle={styles.iconScrollContent}
+                  showsVerticalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                  directionalLockEnabled>
                   {EMOJI_GROUPS.map(group => (
                     <View key={group.label} style={styles.emojiGroup}>
                       <Text style={styles.emojiGroupLabel}>{group.label.toUpperCase()}</Text>
@@ -604,10 +646,8 @@ export default function CreateRewardScreen() {
                     </View>
                   ))}
                 </ScrollView>
-              </View>
-            </TouchableWithoutFeedback>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -633,8 +673,21 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   backBtn: { paddingVertical: 12, paddingRight: 12 },
   backText: { fontSize: 15, color: '#127E78', fontWeight: '700' },
-  pageTitle: { fontSize: 26, fontWeight: '800', color: HEADING },
-  pageSubtitle: { fontSize: 14, color: MUTED, marginTop: 5, marginBottom: 24, lineHeight: 20 },
+  headingCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    backgroundColor: '#3E8581', borderRadius: 28,
+    paddingHorizontal: 20, paddingVertical: 26, marginBottom: 24,
+    shadowColor: '#266D68', shadowOpacity: 0.10, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 }, elevation: 2,
+  },
+  headingIconBox: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: '#E7F7F5', alignItems: 'center', justifyContent: 'center',
+  },
+  headingIcon: { fontSize: 34 },
+  headingCopy: { flex: 1, minWidth: 0 },
+  pageTitle: { fontSize: 28, fontWeight: '800', color: '#FFFFFF' },
+  pageSubtitle: { fontSize: 15, color: '#D9EFED', marginTop: 8, lineHeight: 22 },
 
   // Preview
   sectionCaption: { fontSize: 12, fontWeight: '700', color: MUTED, letterSpacing: 0.8, marginBottom: 9 },
@@ -778,6 +831,22 @@ const styles = StyleSheet.create({
   presetText: { fontSize: 13, fontWeight: '700', color: MUTED },
   presetTextActive: { color: '#FFFFFF' },
 
+  // Repeatable row
+  repeatRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  repeatRowOn: { borderColor: '#11A79B', backgroundColor: TEAL_SOFT },
+  repeatIcon: {
+    width: 44, height: 44, borderRadius: 14, backgroundColor: TOGGLE_BG,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  repeatTitle: { fontSize: 15, fontWeight: "800", color: INK },
+  repeatHint: { fontSize: 13, color: MUTED, marginTop: 3, lineHeight: 18 },
+  repeatCheck: {
+    width: 28, height: 28, borderRadius: 9, borderWidth: 2, borderColor: BORDER,
+    backgroundColor: SURFACE, alignItems: 'center', justifyContent: 'center',
+  },
+  repeatCheckOn: { backgroundColor: TEAL, borderColor: TEAL },
+  repeatCheckMark: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+
   // Availability
   toggleRow: { flexDirection: 'row', backgroundColor: TOGGLE_BG, borderRadius: 14, padding: 4, gap: 4 },
   toggleBtn: { flex: 1, paddingVertical: 13, paddingHorizontal: 6, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
@@ -846,8 +915,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 20,
     paddingBottom: 36,
-    maxHeight: '75%',
+    height: '75%',
   },
+  iconScroll: { flex: 1, minHeight: 0 },
+  iconScrollContent: { paddingBottom: 24 },
   modalHandle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: BORDER, marginBottom: 14 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: INK },

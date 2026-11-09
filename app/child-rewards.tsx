@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { arrayUnion, runTransaction, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -61,6 +61,8 @@ export default function ChildRewardsScreen() {
   const router = useRouter();
   const { theme, themeKey } = useChildTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const purchaseLock = useRef(false);
+  const [hiddenRewards, setHiddenRewards] = useState<string[]>([]);
   const [childData, setChildData] = useState<any>(null);
   const [rewards, setRewards] = useState<any[]>([]);
   const [coinBalance, setCoinBalance] = useState(0);
@@ -149,6 +151,7 @@ export default function ChildRewardsScreen() {
           const childSnap = await getDoc(doc(db, 'children', child.id));
           if (childSnap.exists()) {
             const fresh: any = childSnap.data();
+            setHiddenRewards(fresh.hiddenRewardIds || []);
             if (typeof fresh.coinBalance === 'number') {
               const updated = { ...child, coinBalance: fresh.coinBalance };
               setChildData(updated);
@@ -171,7 +174,7 @@ export default function ChildRewardsScreen() {
           id: d.id,
           ...d.data()
         }));
-        setRewards(rewardsData);
+        setRewards(rewardsData.filter((reward: any) => !(reward.excludedChildIds || []).includes(child.id)));
 
         // Load already purchased rewards
         const purchasedQuery = query(
@@ -189,9 +192,7 @@ export default function ChildRewardsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -233,31 +234,40 @@ export default function ChildRewardsScreen() {
   // Purchase runs from inside the popup so we don't show an Alert on top of a Modal
   // (which is unreliable on iOS).
   const purchaseReward = async (reward: any) => {
-    const cost = Number(reward.coinCost ?? 0);
+    if (purchaseLock.current || !childData) return;
+    purchaseLock.current = true;
     try {
       setBuying(true);
       setErrorText('');
-      const newBalance = coinBalance - cost;
-
-      // Update coin balance in Firestore
-      await updateDoc(doc(db, 'children', childData.id), {
-        coinBalance: newBalance,
-      });
-
-      // Save purchase to Firestore
-      await addDoc(collection(db, 'purchases'), {
-        childId: childData.id,
-        rewardId: reward.id,
-        rewardTitle: reward.title,
-        coinCost: cost,
-        parentId: childData.parentId,
-        purchasedAt: new Date(),
-        fulfilled: false,
+      const purchaseRef = doc(collection(db, 'purchases'));
+      const childRef = doc(db, 'children', childData.id);
+      const rewardRef = doc(db, 'rewards', reward.id);
+      const claimRef = doc(db, 'purchases', `once_${childData.id}_${reward.id}`);
+      const newBalance = await runTransaction(db, async transaction => {
+        const childSnap = await transaction.get(childRef);
+        const rewardSnap = await transaction.get(rewardRef);
+        const claimSnap = await transaction.get(claimRef);
+        if (!childSnap.exists() || !rewardSnap.exists()) throw new Error('This reward is no longer available.');
+        const current = rewardSnap.data();
+        const child = childSnap.data();
+        if (current.parentId !== child.parentId || (current.excludedChildIds || []).includes(childData.id) || (current.availableTo !== 'all' && current.availableTo !== childData.id)) throw new Error('This reward is not assigned to you.');
+        if (!current.repeatable && (claimSnap.exists() || purchasedRewards.includes(reward.id))) throw new Error('You already redeemed this reward.');
+        const cost = Number(current.coinCost);
+        const balance = Number(child.coinBalance || 0);
+        if (!Number.isSafeInteger(cost) || cost < 1) throw new Error('This reward has an invalid cost.');
+        if (!Number.isFinite(balance) || balance < cost) throw new Error('You need more coins for this reward.');
+        transaction.update(childRef, { coinBalance: balance - cost });
+        transaction.set(current.repeatable ? purchaseRef : claimRef, {
+          childId: childData.id, childName: child.name || childData.name || 'Your child',
+          parentId: child.parentId, rewardId: reward.id, rewardTitle: current.title,
+          coinCost: cost, purchasedAt: new Date(), fulfilled: false,
+        });
+        return balance - cost;
       });
 
       // Update AsyncStorage with new balance
       const updatedChild = { ...childData, coinBalance: newBalance };
-      await AsyncStorage.setItem('childSession', JSON.stringify(updatedChild));
+      await AsyncStorage.setItem('childSession', JSON.stringify(updatedChild)).catch(console.error);
 
       // Update local state
       setChildData(updatedChild);
@@ -269,18 +279,19 @@ export default function ChildRewardsScreen() {
       setConfirming(false);
       setErrorText(error?.message || 'Something went wrong. Please try again.');
     } finally {
+      purchaseLock.current = false;
       setBuying(false);
     }
   };
 
   const canBuyCount = rewards.filter(
-    r => !purchasedRewards.includes(r.id) && coinBalance >= Number(r.coinCost ?? 0)
+    r => (r.repeatable || !purchasedRewards.includes(r.id)) && coinBalance >= Number(r.coinCost ?? 0)
   ).length;
   const boughtCount = rewards.filter(r => purchasedRewards.includes(r.id)).length;
 
   // Popup values for the selected reward
   const selCost = Number(selectedReward?.coinCost ?? 0);
-  const selPurchased = !!selectedReward && purchasedRewards.includes(selectedReward.id);
+  const selPurchased = !!selectedReward && !selectedReward.repeatable && purchasedRewards.includes(selectedReward.id);
   const selCanAfford = coinBalance >= selCost;
   const selDescription = selectedReward?.description || 'No description yet.';
 
@@ -374,10 +385,10 @@ export default function ChildRewardsScreen() {
           </View>
         ) : (
           <View style={styles.rewardsList}>
-            {rewards.map((reward, index) => {
+            {rewards.filter(reward => !hiddenRewards.includes(reward.id)).map((reward, index) => {
               const cost = Number(reward.coinCost ?? 0);
               const canAfford = coinBalance >= cost;
-              const isPurchased = purchasedRewards.includes(reward.id);
+              const isPurchased = !reward.repeatable && purchasedRewards.includes(reward.id);
               const stripeColor = isPurchased ? '#4ECDC4' : canAfford ? '#F4B942' : '#C9D6D4';
               const savedPct = cost > 0 ? Math.min(100, Math.round((coinBalance / cost) * 100)) : 100;
               return (
@@ -501,6 +512,21 @@ export default function ChildRewardsScreen() {
                   <Animated.View style={[styles.modalEmojiBox, { transform: [{ scale: boughtAnim }] }]}>
                     <Text style={styles.modalEmoji}>{selectedReward?.emoji || '🎁'}</Text>
                   </Animated.View>
+                  {selectedReward?.repeatable && <Text style={styles.modalSubtitle}>Repeatable reward</Text>}
+                  {selPurchased && !buying && (
+                    <TouchableOpacity onPress={() => Alert.alert('Clear redeemed reward?', 'Remove this completed reward from your page. Your coins and redemption record stay unchanged.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Clear', onPress: async () => {
+                        try {
+                          await updateDoc(doc(db, 'children', childData.id), { hiddenRewardIds: arrayUnion(selectedReward.id) });
+                          setHiddenRewards(ids => [...ids, selectedReward.id]);
+                          closeReward();
+                        } catch { Alert.alert('Could not clear reward', 'Please try again.'); }
+                      } },
+                    ])}>
+                      <Text style={{ color: '#B33A3A', textAlign: 'center', padding: 12 }}>Clear redeemed reward</Text>
+                    </TouchableOpacity>
+                  )}
                   <Text style={styles.modalTitle}>
                     {justBought ? 'Reward bought! 🎉' : selectedReward?.title || 'Reward'}
                   </Text>

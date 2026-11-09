@@ -15,6 +15,7 @@ export default function RootLayout() {
       setUser(firebaseUser);
       setLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
@@ -26,6 +27,7 @@ export default function RootLayout() {
         router.replace('/parent-dashboard');
       } else {
         const childSession = await AsyncStorage.getItem('childSession');
+
         if (childSession) {
           router.replace('/child-dashboard');
         } else {
@@ -58,18 +60,17 @@ export default function RootLayout() {
         headerShown: false,
         animation: 'slide_from_right',
         animationDuration: 250,
-        gestureEnabled: true,
-        fullScreenGestureEnabled: true,
+        gestureEnabled: false,
         contentStyle: { backgroundColor: '#F7F9FA' },
       }}
     >
-      {/* ========== Auth Screens ========== */}
+      {/* Auth Screens */}
       <Stack.Screen name="index" />
       <Stack.Screen name="parent-login" />
       <Stack.Screen name="child-login" />
       <Stack.Screen name="sign-up" />
 
-      {/* ========== Dashboards (NO swipe back) ========== */}
+      {/* Dashboards */}
       <Stack.Screen
         name="parent-dashboard"
         options={{
@@ -87,7 +88,7 @@ export default function RootLayout() {
         }}
       />
 
-      {/* ========== Create Screens (nice bottom slide) ========== */}
+      {/* Create Screens */}
       <Stack.Screen
         name="create-chore"
         options={{
@@ -110,7 +111,7 @@ export default function RootLayout() {
         }}
       />
 
-      {/* ========== Other Screens ========== */}
+      {/* Other Screens */}
       <Stack.Screen
         name="family-code"
         options={{ animation: 'fade' }}
