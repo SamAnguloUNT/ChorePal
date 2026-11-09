@@ -1,12 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { arrayUnion, collection, doc, getDocs, onSnapshot, updateDoc, query, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, getDocs, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  AppState,
   Alert,
+  AppState,
   Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,8 @@ export default function RewardsListScreen() {
   const [filter, setFilter] = useState<'all' | 'available' | 'redeemed'>('all');
   const [loading, setLoading] = useState(true);
   const [children, setChildren] = useState<any[]>([]);
+  // Every child starts open. Tap a child's header to collapse or reopen their rewards.
+  const [collapsed, setCollapsed] = useState<string[]>([]);
 
   // Expo Router can keep this screen mounted behind child screens.
   // Subscribe only while focused and recheck the active session before alerting.
@@ -152,8 +155,57 @@ export default function RewardsListScreen() {
   });
   const availableRewards = activeRows.length;
   const redeemedRewards = redeemedRows.length;
-  const totalRewards = availableRewards;
-  const filteredRewards = filter === 'redeemed' ? redeemedRows : activeRows;
+  const totalRewards = availableRewards + redeemedRewards;
+  // All = available + redeemed. Available and Redeemed show just one kind.
+  const filteredRewards =
+    filter === 'redeemed' ? redeemedRows : filter === 'available' ? activeRows : [...activeRows, ...redeemedRows];
+
+  // Group the rows by child, like the chore list. Redeemed rewards from a child who was
+  // removed go in their own group at the end.
+  const knownIds = new Set(children.filter((c: any) => c.isDeleted !== true).map(c => c.id));
+  const rowChildId = (row: any) => (row.redeemed ? row.childId : row.assignedChildId);
+  const groups = [
+    ...children.filter((c: any) => c.isDeleted !== true).map(child => ({
+      key: child.id,
+      name: child.name || 'Your child',
+      avatar: child.avatar || '👧',
+      rows: filteredRewards.filter(row => rowChildId(row) === child.id),
+    })),
+    {
+      key: 'other',
+      name: 'Removed children',
+      avatar: '👤',
+      rows: filteredRewards.filter(row => !knownIds.has(rowChildId(row))),
+    },
+  ].filter(g => g.key !== 'other' || g.rows.length > 0);
+  const toggleGroup = (key: string) =>
+    setCollapsed(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+
+  // Clears every redeemed reward from the parent's history (same as clearing them one by one:
+  // coins and the child's reward history are not changed).
+  const handleClearAllRedeemed = () => {
+    const ids = redeemedRows.map(row => row.purchaseId).filter(Boolean);
+    if (ids.length === 0) return;
+    Alert.alert(
+      'Clear all redeemed rewards?',
+      `This removes ${ids.length} redeemed reward${ids.length === 1 ? '' : 's'} from this list. Coins and reward availability stay unchanged.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear all',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await Promise.all(ids.map(id => updateDoc(doc(db, 'purchases', id), { hiddenFromParent: true })));
+              setPurchases(prev => prev.map(item => (ids.includes(item.id) ? { ...item, hiddenFromParent: true } : item)));
+            } catch (error: any) {
+              Alert.alert('Could not clear rewards', error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
   const notification = notifications[0];
   const notificationChild = notification && (notification.childName || children.find(child => child.id === notification.childId)?.name || 'Your child');
   const closeNotification = () => setNotifications(previous => previous.slice(1));
@@ -292,78 +344,92 @@ export default function RewardsListScreen() {
             ))}
           </View>
 
-          {/* Rewards List */}
-          {filteredRewards.length === 0 ? (
+          {/* Rewards grouped by child */}
+          {children.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>⭐</Text>
-              <Text style={styles.emptyTitle}>No rewards found</Text>
-              <Text style={styles.emptySubtitle}>
-                Tap “+ Add” to create a new reward.
-              </Text>
+              <Text style={styles.emptyTitle}>No children yet</Text>
+              <Text style={styles.emptySubtitle}>Add a child first, then create rewards for them.</Text>
             </View>
           ) : (
-            <View style={styles.rewardsList}>
-              {filteredRewards.map((reward) => (
-                <PressableScale
-                  key={reward.rowKey}
-                  style={[
-                    styles.rewardCard,
-                    reward.redeemed && styles.rewardCardRedeemed,
-                  ]}
-                  onPress={() => handleEditReward(reward)}
-                >
-                  {/* Emoji */}
-                  <View
-                    style={[
-                      styles.rewardEmojiBox,
-                      reward.redeemed && styles.rewardEmojiBoxRedeemed,
-                    ]}
-                  >
-                    <Text style={styles.rewardEmoji}>{reward.emoji || '🎁'}</Text>
-                  </View>
-
-                  {/* Info */}
-                  <View style={styles.rewardInfo}>
-                    <View style={styles.rewardTop}>
-                      <Text style={styles.rewardTitle} numberOfLines={1}>
-                        {reward.title}
-                      </Text>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          reward.redeemed
-                            ? styles.statusBadgeRedeemed
-                            : styles.statusBadgeAvailable,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            reward.redeemed
-                              ? styles.statusTextRedeemed
-                              : styles.statusTextAvailable,
-                          ]}
-                        >
-                          {reward.redeemed ? 'Redeemed' : reward.repeatable ? 'Repeatable' : 'Available'}
+            groups.map(group => {
+              const open = !collapsed.includes(group.key);
+              const availableCount = group.rows.filter(r => !r.redeemed).length;
+              const redeemedCount = group.rows.length - availableCount;
+              return (
+                <View key={group.key} style={styles.childSection}>
+                  <PressableScale
+                    style={styles.childHeader}
+                    onPress={() => toggleGroup(group.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: open }}
+                    accessibilityLabel={`Toggle rewards for ${group.name}`}>
+                    <View style={styles.childLeft}>
+                      <View style={styles.childAvatarCircle}>
+                        <Text style={styles.childAvatarEmoji}>{group.avatar}</Text>
+                      </View>
+                      <View style={{ flexShrink: 1 }}>
+                        <Text style={styles.childName}>{group.name}</Text>
+                        <Text style={styles.childCount}>
+                          {filter !== 'redeemed' ? `${availableCount} available` : ''}
+                          {filter === 'all' ? ' · ' : ''}
+                          {filter !== 'available' ? `${redeemedCount} redeemed` : ''}
                         </Text>
                       </View>
                     </View>
-                    <View style={styles.rewardBottom}>
-                      <View style={styles.coinsBadge}>
-                        <Text style={styles.coinsText}>
-                          🪙 {reward.coinCost ?? 0} coins
-                        </Text>
-                      </View>
-                      <Text style={styles.availableTo} numberOfLines={1}>
-                        👥 {reward.availableToLabel}
-                      </Text>
-                    </View>
-                  </View>
+                    <Text style={styles.expandArrow}>{open ? '▼' : '›'}</Text>
+                  </PressableScale>
 
-                  <Text style={styles.editArrow}>›</Text>
-                </PressableScale>
-              ))}
-            </View>
+                  {open && (
+                    <View style={styles.childRewards}>
+                      {group.rows.length === 0 ? (
+                        <Text style={styles.noRewardsText}>
+                          {filter === 'redeemed' ? 'Nothing redeemed yet.' : 'No rewards here yet.'}
+                        </Text>
+                      ) : (
+                        group.rows.map((reward) => (
+                          <PressableScale
+                            key={reward.rowKey}
+                            style={[styles.rewardCard, reward.redeemed && styles.rewardCardRedeemed]}
+                            onPress={() => handleEditReward(reward)}>
+                            <View style={[styles.rewardEmojiBox, reward.redeemed && styles.rewardEmojiBoxRedeemed]}>
+                              <Text style={styles.rewardEmoji}>{reward.emoji || '🎁'}</Text>
+                            </View>
+                            <View style={styles.rewardInfo}>
+                              <View style={styles.rewardTop}>
+                                <Text style={styles.rewardTitle} numberOfLines={1}>{reward.title}</Text>
+                                <View style={[styles.statusBadge, reward.redeemed ? styles.statusBadgeRedeemed : styles.statusBadgeAvailable]}>
+                                  <Text style={[styles.statusText, reward.redeemed ? styles.statusTextRedeemed : styles.statusTextAvailable]}>
+                                    {reward.redeemed ? 'Redeemed' : reward.repeatable ? 'Repeatable' : 'Available'}
+                                  </Text>
+                                </View>
+                              </View>
+                              <View style={styles.rewardBottom}>
+                                <View style={styles.coinsBadge}>
+                                  <Text style={styles.coinsText}>🪙 {reward.coinCost ?? 0} coins</Text>
+                                </View>
+                              </View>
+                            </View>
+                            <Text style={styles.editArrow}>›</Text>
+                          </PressableScale>
+                        ))
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+
+          {/* Plain Pressable on purpose (PressableScale can stretch inside a ScrollView) */}
+          {filter !== 'available' && redeemedRewards > 0 && (
+            <Pressable
+              style={styles.clearAllBtn}
+              onPress={handleClearAllRedeemed}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all redeemed rewards">
+              <Text style={styles.clearAllText}>🧹 Clear all redeemed rewards</Text>
+            </Pressable>
           )}
         </ScrollView>
       )}
@@ -667,6 +733,29 @@ const styles = StyleSheet.create({
     color: '#C9D6D4',
     fontWeight: '300',
   },
+
+  // Child sections (same look as the chore list)
+  childSection: {
+    marginBottom: 16, borderRadius: 22, borderWidth: 1.5, borderColor: '#DDF1EE',
+    backgroundColor: '#FFFFFF',
+  },
+  childHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: 16, backgroundColor: '#E6F8F6', borderRadius: 20,
+  },
+  childLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
+  childAvatarCircle: {
+    width: 48, height: 48, borderRadius: 24, backgroundColor: '#4ECDC4',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  childAvatarEmoji: { fontSize: 26 },
+  childName: { fontSize: 17, fontWeight: '800', color: '#1F2D2B' },
+  childCount: { fontSize: 12, color: '#6B7C79', marginTop: 2 },
+  expandArrow: { fontSize: 20, color: '#0F7F76', fontWeight: '700' },
+  childRewards: { padding: 12, gap: 12 },
+  noRewardsText: { fontSize: 14, color: '#6B7C79', textAlign: 'center', padding: 12, fontStyle: 'italic' },
+  clearAllBtn: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 },
+  clearAllText: { color: '#E63946', fontWeight: '700', fontSize: 14 },
 
   // Empty state
   emptyState: {
