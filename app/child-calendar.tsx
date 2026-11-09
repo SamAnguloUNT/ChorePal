@@ -235,7 +235,7 @@ export default function ChildCalendarScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Same floating orbs as the dashboard (behind everything) */}
-      {!reduceMotion && <FloatingBackground themeKey={themeKey} />}
+      <FloatingBackground themeKey={themeKey} still={reduceMotion} />
 
       <ScrollView
         contentContainerStyle={styles.scroll}

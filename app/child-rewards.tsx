@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { arrayUnion, runTransaction, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, getDoc, getDocs, query, runTransaction, updateDoc, where } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -298,7 +298,7 @@ export default function ChildRewardsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Same floating orbs as the dashboard (behind everything) */}
-      {!reduceMotion && <FloatingBackground themeKey={themeKey} />}
+      <FloatingBackground themeKey={themeKey} still={reduceMotion} />
 
       <ScrollView
         contentContainerStyle={styles.scroll}

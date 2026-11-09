@@ -40,10 +40,11 @@ export const THEMES: Record<ThemeKey, ChildTheme> = {
   },
   sunlight: {
     key: 'sunlight', name: 'Sunlight', icon: '🌞',
-    bg: '#FFF3CD', card: '#FFFBEA', border: '#F3DFA2', divider: '#F8E9B8',
+    // Softer than before: a light cream instead of strong yellow
+    bg: '#FFF8E6', card: '#FFFDF6', border: '#F2E4BC', divider: '#F7EDCF',
     text: '#4A3B12', muted: '#8A7440',
-    primary: '#F4B942', primaryDark: '#B7791F', tint: '#FFE8A3', onPrimary: '#4A3B12',
-    hero: '#F4B942', onHero: '#4A3B12', warnTint: '#FFF8E1', coinBg: '#FFE08A',
+    primary: '#F4B942', primaryDark: '#B7791F', tint: '#FFEFC4', onPrimary: '#4A3B12',
+    hero: '#F6C65B', onHero: '#4A3B12', warnTint: '#FFF8E1', coinBg: '#FFE7A8',
     danger: '#E63946', dangerTint: '#FFE5E5',
   },
   dark: {
