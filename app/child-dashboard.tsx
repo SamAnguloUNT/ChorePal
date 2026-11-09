@@ -554,7 +554,7 @@ export default function ChildDashboard() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Fun animated background: floating stars, bubbles and coins (behind everything) */}
-      {!reduceMotion && <FloatingBackground themeKey={themeKey} />}
+      <FloatingBackground themeKey={themeKey} still={reduceMotion} />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -614,7 +614,7 @@ export default function ChildDashboard() {
 
         {/* Pal: the ChorePal clipboard. Face, arms and checklist follow today's progress. */}
         <View style={styles.palWrap}>
-          <PalMascot mood={palMood} checked={palChecked} size={230} reduceMotion={reduceMotion} />
+          <PalMascot mood={palMood} checked={palChecked} size={230} reduceMotion={reduceMotion} themeKey={themeKey} />
         </View>
 
         {requiredChores.length > 0 && (
