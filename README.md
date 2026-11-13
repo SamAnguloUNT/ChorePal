@@ -20,7 +20,6 @@ review submissions, and Pal, the ChorePal clipboard mascot, cheers children on.
 
 **Course Staff:**
 - Professor: Diana Rabah
-- TA:
 
 What each team member worked on is listed in [CONTRIBUTIONS.md](CONTRIBUTIONS.md).
 
@@ -38,7 +37,7 @@ What each team member worked on is listed in [CONTRIBUTIONS.md](CONTRIBUTIONS.md
    ```bash
    npx expo start
    ```
-4. Scan the QR code with **Expo Go** on your phone, or press `a` (Android emulator) or `i` (iOS simulator).
+4. Scan the QR code with **Expo Go** on your IOS device, or press `i` (iOS simulator).
 
 If the app shows old code after pulling changes, restart with a cleared cache: `npx expo start -c`.
 
