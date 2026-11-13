@@ -46,8 +46,8 @@
    - [Feature 6: Text-to-Speech (Read Aloud)](#feature-6)
 6. [🛠️ Troubleshooting](#troubleshooting)
 7. [💌 Contact Information](#contact)
-9. [⚠️ Discipline System](#discipline)
-10. [❓ FAQ](#faq)
+8. [⚠️ Discipline System](#discipline)
+9. [❓ FAQ](#faq)
 
 ---
 
@@ -210,11 +210,6 @@ Parents can create chores, assign them to specific children, set coin values, du
 
 <p align="center">
   <img src="assets/images/ParentDashChore.png" alt="Parent Dashboard with the Create Chore button" width="240">
-<<<<<<< HEAD
-=======
-  &nbsp;&nbsp;
-  <img src="assets/images/ParentDashChore.png" alt="Creating a chore" width="240">
->>>>>>> f632e81e00b9ff6ac2c96c05eccfa23594a07e49
 </p>
 
 ---
@@ -364,11 +359,7 @@ Text-to-Speech lets children listen to their chores, rewards, and feedback inste
 ---
 
 <a id="discipline"></a>
-<<<<<<< HEAD
 ## ⚠️ 8. Discipline System
-=======
-## ⚠️ 9. Discipline System
->>>>>>> f632e81e00b9ff6ac2c96c05eccfa23594a07e49
 `👩‍👧 For Parents`
 
 The Discipline System lets a parent remove coins from a child's balance when a rule has been broken, for example uploading a false chore photo. Every deduction requires a reason, and the child is told how many points were taken away and why.
@@ -391,22 +382,15 @@ The Discipline System lets a parent remove coins from a child's balance when a r
 > - Each deduction is saved to the child's record with the amount, your reason, and the date and time.
 > - Children see a point deduction notice with the reason you gave. Using a clear, specific reason helps them understand what happened, and children can have the notice read aloud with Text-to-Speech ([Feature 6](#feature-6)).
 > - Tap **← Back** at any time to leave the screen without removing anything.
-<<<<<<< HEAD
 
 <p align="center">
-  <img src="assets/images/Discipline.png" alt="Text-to-Speech speaker icon on a chore" width="240">
+  <img src="assets/images/Discipline.png" alt="Discipline screen for removing points" width="240">
 </p>
-=======
->>>>>>> f632e81e00b9ff6ac2c96c05eccfa23594a07e49
 
 ---
 
 <a id="faq"></a>
-<<<<<<< HEAD
-## ❓ 9. FAQ 
-=======
-## ❓ 10. FAQ (Extra Credit)
->>>>>>> f632e81e00b9ff6ac2c96c05eccfa23594a07e49
+## ❓ 9. FAQ
 
 <details>
 <summary><b>👩‍👧 Can one parent account manage multiple children?</b></summary>
@@ -464,8 +448,4 @@ The total coin balance appears at the top of the Child Dashboard and on the Rewa
 
 © 2026 Team 2
 
-<<<<<<< HEAD
 </div>
-=======
-</div>
->>>>>>> f632e81e00b9ff6ac2c96c05eccfa23594a07e49
