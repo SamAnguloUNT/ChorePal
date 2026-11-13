@@ -286,7 +286,7 @@ The Rewards feature allows parents to create rewards that children can redeem us
 6. The coins needed will be removed from your balance after a successful purchase.
 
 <p align="center">
-  <img src="assets/images/ChidRewardPage.png" alt="Child rewards page" width="240">
+  <img src="assets/images/ChildRewardPage.png" alt="Child rewards page" width="240">
 </p>
 
 ---
