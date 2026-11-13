@@ -210,8 +210,6 @@ Parents can create chores, assign them to specific children, set coin values, du
 
 <p align="center">
   <img src="assets/images/ParentDashChore.png" alt="Parent Dashboard with the Create Chore button" width="240">
-  &nbsp;&nbsp;
-  <img src="assets/images/ParentDashChore.png" alt="Creating a chore" width="240">
 </p>
 
 ---
@@ -384,6 +382,10 @@ The Discipline System lets a parent remove coins from a child's balance when a r
 > - Each deduction is saved to the child's record with the amount, your reason, and the date and time.
 > - Children see a point deduction notice with the reason you gave. Using a clear, specific reason helps them understand what happened, and children can have the notice read aloud with Text-to-Speech ([Feature 6](#feature-6)).
 > - Tap **← Back** at any time to leave the screen without removing anything.
+
+<p align="center">
+  <img src="assets/images/Discipline.png" alt="Text-to-Speech speaker icon on a chore" width="240">
+</p>
 
 ---
 
