@@ -25,6 +25,7 @@ import {
 import AnimatedEntry from '../components/AnimatedEntry';
 import PressableScale from '../components/PressableScale';
 import { auth } from '../config/firebase';
+import { friendlyAuthError } from '../utils/authErrors';
 
 export default function ParentLoginScreen() {
   const router = useRouter();
@@ -84,11 +85,7 @@ export default function ParentLoginScreen() {
                   await sendEmailVerification(user);
                   Alert.alert('Sent! 📧', `A new link is on its way to ${user.email}.`);
                 } catch (resendError: any) {
-                  if (resendError.code === 'auth/too-many-requests') {
-                    Alert.alert('Slow down', 'Too many requests. Please wait a few minutes and try again.');
-                  } else {
-                    Alert.alert('Error!', resendError.message);
-                  }
+                  Alert.alert('Could not send email', friendlyAuthError(resendError));
                 } finally {
                   await signOut(auth);
                 }
@@ -102,7 +99,7 @@ export default function ParentLoginScreen() {
 
       router.replace('/parent-dashboard');
     } catch (error: any) {
-      Alert.alert('Login Failed!', error.message);
+      Alert.alert('Login failed', friendlyAuthError(error));
     } finally {
       setLoading(false);
     }
@@ -122,13 +119,7 @@ export default function ParentLoginScreen() {
         'If an account exists for that address, a password reset link is on its way. Check your spam folder too.'
       );
     } catch (error: any) {
-      if (error.code === 'auth/invalid-email') {
-        Alert.alert('Invalid email', 'Please enter a valid email address.');
-      } else if (error.code === 'auth/too-many-requests') {
-        Alert.alert('Slow down', 'Too many attempts. Please try again later.');
-      } else {
-        Alert.alert('Error!', error.message);
-      }
+      Alert.alert('Could not send reset email', friendlyAuthError(error));
     } finally {
       setResetLoading(false);
     }
@@ -287,6 +278,19 @@ export default function ParentLoginScreen() {
               <Text style={styles.childEmoji}>🧒</Text>
               <Text style={styles.childLink}>I'm a child!</Text>
             </PressableScale>
+
+            {/* Privacy notice (COPPA): link to the full policy from the login screen */}
+            <Text style={styles.policyText}>
+              By logging in, you agree to how ChorePal handles your family's information, including
+              information about children under 13, as described in our{' '}
+              <Text
+                style={styles.policyLink}
+                onPress={() => router.push('/privacy-policy')}
+                accessibilityRole="link">
+                Privacy Policy
+              </Text>
+              .
+            </Text>
           </AnimatedEntry>
 
         </ScrollView>
@@ -438,4 +442,13 @@ const styles = StyleSheet.create({
   },
   childEmoji: { fontSize: 20 },
   childLink: { color: '#0F7F76', fontSize: 15, fontWeight: '800' },
+  policyText: {
+    marginTop: 22,
+    paddingHorizontal: 8,
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6B7C79',
+  },
+  policyLink: { color: '#0F7F76', fontWeight: '800', textDecorationLine: 'underline' },
 });
