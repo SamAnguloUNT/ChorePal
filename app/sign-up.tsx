@@ -21,6 +21,7 @@ import {
 import AnimatedEntry from '../components/AnimatedEntry';
 import PressableScale from '../components/PressableScale';
 import { auth, db } from '../config/firebase';
+import { friendlyAuthError } from '../utils/authErrors';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -111,7 +112,7 @@ export default function SignUpScreen() {
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
-      Alert.alert('Sign Up Failed!', error.message);
+      Alert.alert('Sign up failed', friendlyAuthError(error));
     } finally {
       setLoading(false);
     }

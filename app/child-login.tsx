@@ -22,6 +22,7 @@ import AnimatedEntry from '../components/AnimatedEntry';
 import FloatingBackground from '../components/FloatingBackground';
 import PressableScale from '../components/PressableScale';
 import { db } from '../config/firebase';
+import { friendlyAuthError } from '../utils/authErrors';
 
 // Codes are NAME-XXXX. Names vary in length, so the dash always goes before the last 4 characters.
 // A dash inside the name (MARY-JANE-AB12) is kept; one typed in the wrong spot is moved.
@@ -118,7 +119,7 @@ export default function ChildLoginScreen() {
       router.replace('/child-dashboard');
 
     } catch (error: any) {
-      Alert.alert('Error!', error.message);
+      Alert.alert('Oops!', friendlyAuthError(error));
     } finally {
       setLoading(false);
     }
